@@ -98,6 +98,57 @@ event_id: `purchase_${order.id}`
 
 This also makes the webhook idempotent on Shopify retry. No need to thread a UUID through cart attributes.
 
+## "Meta Diagnostics: server event was not deduplicated" on a Hydrogen storefront
+
+**Symptom:** Meta Events Manager → Diagnostics shows warnings like `服务器的“Purchase”事件未去重` / "Server `Purchase` event was not deduplicated" — typically for **Purchase, InitiateCheckout, and PageView** together. Meta says it can see two events for the same conversion and can't pair them.
+
+**Cause:** Shopify's `Facebook & Instagram` app (when Data Sharing = Enhanced or Maximum) fires its own pixel+CAPI pair from the **Shopify-hosted checkout sandbox** (`checkout.{shop}.com`) with an internal `event_id` you cannot see or match. Your server CAPI webhook fires a third copy with your own event_id (e.g. `purchase_<order_id>`). Meta dedups by `(event_name, event_id)` across the whole pixel account — your event_id doesn't match Shopify's, so the third copy is unpaired.
+
+**Critical Hydrogen nuance — read before reaching for a fix:**
+
+The Shopify FB & Insta app pixel only reaches places where Shopify renders the page. On a Liquid Online Store, that's everywhere. On Hydrogen, that's **only the checkout sandbox** — there's no Liquid theme for Shopify to inject the pixel into your Hydrogen storefront.
+
+Coverage map for Hydrogen + FB & Insta app at Maximum:
+
+| Event | Hydrogen storefront | Shopify checkout | Covered by Shopify app? |
+|---|---|---|---|
+| `page_view` | ✅ fires here | ✅ also here | only the checkout fire |
+| `view_item` / `view_item_list` / `view_cart` | ✅ here only | — | ❌ no |
+| `add_to_cart` / `remove_from_cart` / `search` | ✅ here only | — | ❌ no |
+| `begin_checkout` | — (or only as you fire it) | ✅ here | ✅ yes |
+| `add_payment_info` | — | ✅ here | ✅ yes |
+| `purchase` | — | ✅ here | ✅ yes |
+
+So the dedup conflict is **only on the 3 checkout-stage events** — but Meta's diagnostic counters fire per-event-name across the whole account, so even storefront-only `page_view` fires get the warning if Shopify also fires `page_view` once from checkout. The warning is noisy but the underlying conflict is only for the checkout-stage events.
+
+**Fix — do NOT blindly skip every event in your server CAPI forwarder.** That would break Meta coverage for all the storefront events that Shopify never sees.
+
+Safe minimal skip:
+
+```ts
+// app/.server/tracking/forwarders/meta-capi.ts
+const COVERED_BY_SHOPIFY_CHECKOUT_PIXEL = new Set([
+  "page_view",        // Shopify fires it once at checkout; storefront PVs
+                      // still attract the diagnostic warning because Meta
+                      // matches by event_name. Skipping is a noise/value
+                      // trade — you lose modeled-PV signal on storefront.
+  "begin_checkout",   // Shopify fires this from checkout sandbox.
+  "add_payment_info", // Same.
+]);
+if (COVERED_BY_SHOPIFY_CHECKOUT_PIXEL.has(event.event_name)) {
+  return { ok: true, skipped: true, reason: "covered_by_shopify_checkout" };
+}
+```
+
+For **Purchase** specifically: do NOT just skip it. Purchase is the most attribution-critical event and your webhook is the only ground-truth source (covers ad-blocked / iOS / abandoned-and-recovered cases that the checkout pixel misses). Instead:
+
+1. Install a **Custom Pixel** on Shopify checkout (`docs/cr001/checkout-pixel.js`) that fires `fbq('track', 'Purchase', ..., {eventID: 'purchase_' + initData.checkout.order.id})` browser-side with the SAME event_id format as your server CAPI. This pairs YOUR pixel fire with YOUR server fire — separate from Shopify's app pixel's own internal pair. Meta sees two clean dedup pairs and counts Purchase once.
+2. Keep `purchase` flowing to all other forwarders (GA4 MP, Google Ads, Traffic Junky, GoAffpro, Awin) from the same webhook.
+
+**Trap to avoid:** It's tempting to assume "FB & Insta app at Maximum already covers everything, drop all 11 mapped events from our forwarder." On Liquid this would be roughly correct. On **Hydrogen this drops Meta coverage entirely for 8 storefront events the app never touches** — your AddToCart, ViewContent, Search funnel reporting goes dark. Always check whether your storefront is Liquid or Hydrogen before extrapolating Shopify-Meta integration advice.
+
+**Verification:** After the skip ships, wait ~24h for Meta Diagnostics to recompute. PageView/InitiateCheckout/AddPaymentInfo warnings should clear. If Purchase warning persists, that's the signal to install the Custom Pixel.
+
 ## "GTM tag fires inline scripts, CSP violations spam the console"
 
 **Cause:** Custom HTML tags in GTM inject `<script>` blocks at runtime without the page nonce. Per CSP3 spec, when `nonce-XXX` is present in `script-src`, `'unsafe-inline'` is IGNORED — so un-nonced inline scripts get blocked.

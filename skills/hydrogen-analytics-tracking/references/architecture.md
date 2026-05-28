@@ -199,6 +199,18 @@ The alternative — stashing a GA-style UUID in `cart.attributes` at begin_check
 
 Hold the mapping in a `Record<string, string>` per forwarder so storefront code can stay GA4-canonical and vendor naming is centralised.
 
+### Meta CAPI on Hydrogen: which events to actually send
+
+The table above shows the *name mapping*, not the *sending decision*. On a Hydrogen storefront with Shopify's `Facebook & Instagram` app installed at Enhanced/Maximum data sharing, the Shopify app fires its own pixel+CAPI pair from the **checkout sandbox** (`checkout.{shop}.com`) for `page_view`, `begin_checkout`, `add_payment_info`, and `purchase`. Your server CAPI sending the same event names creates an unpaired third copy that Meta Diagnostics flags as `服务器事件未去重` / "server event was not deduplicated".
+
+Safe default for the Meta CAPI forwarder on Hydrogen:
+
+- **Skip server-side**: `page_view`, `begin_checkout`, `add_payment_info` (Shopify's checkout pixel covers these and adds no value to skip-them-too).
+- **Skip + add browser-side Custom Pixel for dedup**: `purchase` is too critical to drop — install `docs/cr001/checkout-pixel.js` that fires `fbq('track', 'Purchase', ..., {eventID: 'purchase_' + order.id})` from the checkout sandbox with the same event_id your server uses. Then your webhook → server CAPI and your Custom Pixel → browser pixel pair cleanly. Shopify's own pair runs in parallel and dedups separately.
+- **Keep server-side**: all storefront events Shopify never sees — `view_item`, `view_item_list`, `view_cart`, `add_to_cart`, `remove_from_cart`, `search`, `view_search_results`, plus non-ecomm events `generate_lead`, `sign_up`, `add_to_wishlist`. These have no Shopify-app counterpart on Hydrogen (no Liquid theme = no app pixel injection), so your server CAPI is the only Meta source.
+
+Do **not** skip the storefront events just because the data-sharing UI lists them as "shared by the app" — that UI describes the Liquid Online Store behavior, not your headless storefront. See [`gotchas.md`](./gotchas.md) §"Meta Diagnostics: server event was not deduplicated" for the full reasoning.
+
 ## Audit log
 
 The system silently drops events for many reasons (consent, missing user_data, vendor 4xx, etc.). Without audit logging you cannot debug "why is event X missing in Meta".
