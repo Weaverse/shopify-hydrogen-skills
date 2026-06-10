@@ -111,28 +111,41 @@ export default async function handleRequest(
 The check is conditional: only strip when the route declared `Oxygen-Cache-Control: public, ...`. Cart, account, checkout, `/api/*` etc. don't set that header and keep their `Set-Cookie` semantics intact.
 
 ## Verification recipe
-
 After deploying FPC for the first time:
-
 ```bash
-# Probe twice with a small gap — first should be Miss, second should be Hit
-curl -sI https://your-store.com/ | grep -i "oxygen-"
-sleep 5
-curl -sI https://your-store.com/ | grep -i "oxygen-"
-
-# Expected output:
-#   Probe 1: oxygen-cache-status: miss  (or uncacheable on first deploy)
-#   Probe 2: oxygen-cache-status: hit
-
+# GET, not HEAD: `curl -I` sends HEAD, which fails the method condition and
+# always reports uncacheable — a classic false negative.
+for i in 1 2; do
+  curl -s -D - -o /dev/null -H "Accept-Encoding: gzip" https://your-store.com/ \
+    | grep -iE "oxygen-|set-cookie"
+  sleep 3
+done
+# Expected: miss (stored), then hit. Two more gotchas observed in production:
+#
+# 1. INTERMITTENT uncacheable: Hydrogen forwards Shopify tracking cookies
+#    (_shopify_y / _shopify_essential / …) from Storefront API subrequests —
+#    but only when the shop-analytics subrequest misses its own cache. So the
+#    same URL alternates between `miss` and `uncacheable`. The uncacheable
+#    responses are CORRECT (they carry Set-Cookie); don't chase them.
+#
+# 2. NO HIT from a single client: the FPC appears replica/colo-local. Curl
+#    probes from one machine may show `miss` forever even though everything
+#    is configured right. `uncacheable → miss` proves eligibility; confirm
+#    actual hits via the hit ratio under real traffic, not synthetic probes.
 # TTFB sanity check
 for i in 1 2 3; do
   curl -sS -o /dev/null -w "ttfb=%{time_starttransfer}s\n" https://your-store.com/
 done
-# Cold Miss: ~800ms-2s
-# Warm Hit: ~50-150ms
 ```
-
-If you see `oxygen-cache-status: uncacheable`, dump the full response headers and check against the 7-condition contract above. The most common failure is still `Set-Cookie` (some code path on the route writes the session).
+If you see `uncacheable` on every GET, dump the full response headers and check against the 7-condition contract above. The most common systematic failure is `Set-Cookie` (some code path on the route writes the session).
+## Personalized data in the document blocks FPC at the root
+Before touching headers, audit the **root loader's deferred data**. Skeleton Hydrogen (and Pilot ≤2026.5) returns `cart: cart.get()` and `customerAccount.getAccessToken()` from the root loader — deferred values **stream into the HTML document**, so every page is personalized and caching it would serve one visitor's cart/token to another.
+The fix is a client-side bootstrap (reference implementation: [Weaverse/pilot#401](https://github.com/Weaverse/pilot/pull/401)):
+1. New `GET /api/cart` route returning `{ cart, customerAccessToken }` with `Cache-Control: no-store`.
+2. A client store (zustand) hydrated from that endpoint after mount; header cart badge, account button, and `Analytics.Provider` read the store.
+3. Root loader keeps only non-personalized data.
+Same pattern as Shopify's "Render a cart from client side" recipe. Until this is done, FPC headers are actively dangerous — do not enable them.
+Also note: **FPC cannot be purged without a redeploy.** Keep `max-age` short (60s) for CMS-driven pages; SWR does the heavy lifting.
 
 ## Per-route cache strategy
 
@@ -166,12 +179,12 @@ CSP nonces are OK to cache — they're per-RESPONSE (not per-user), and the inli
 For these cases, lean on Hydrogen's **sub-request caching** (`storefront.CacheLong()`, `CacheShort()`) instead. Sub-request cache reduces the worker's Storefront API roundtrips even when the rendered HTML itself can't be edge-cached. Read [`hydrogen-cookbooks/performance-best-practices`](../../hydrogen-cookbooks/references/performance-best-practices.md) for that pattern.
 
 ## Debugging headers
-
+The status header observed live on Oxygen (June 2026) is **`oxygen-full-page-cache`**, not `oxygen-cache-status` — grep for both if tooling disagrees.
 | Header | Values | Meaning |
 |---|---|---|
-| `oxygen-cache-status: hit` | — | Served from edge cache, no worker run |
-| `oxygen-cache-status: miss` | — | Worker ran, response stored for next time |
-| `oxygen-cache-status: stale` | — | Stale served, worker ran in background to refresh |
-| `oxygen-cache-status: uncacheable` | — | One of the 7 conditions failed — see body of this doc |
+| `oxygen-full-page-cache: hit` | — | Served from edge cache, no worker run |
+| `oxygen-full-page-cache: miss` | — | Worker ran, response stored for next time |
+| `oxygen-full-page-cache: stale` | — | Stale served, worker ran in background to refresh |
+| `oxygen-full-page-cache: uncacheable` | — | One of the 7 conditions failed — see body of this doc |
 | `oxygen-cache-control` | what you set | The cache directive Oxygen evaluated |
 | `server-timing: cfRequestDuration;dur=...` | float ms | How long the worker took (only on miss/stale) |

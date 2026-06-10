@@ -402,6 +402,7 @@ For detailed information on specific topics, read these reference files:
 | 11 | [references/11-advanced-features.md](references/11-advanced-features.md) | Localization, data connectors, CSP |
 | 12 | [references/12-pilot-theme.md](references/12-pilot-theme.md) | Pilot theme patterns & conventions |
 | 13 | [references/13-migration-v5.md](references/13-migration-v5.md) | Remix → React Router v7 migration |
+| 14 | [references/14-sdk-caching-and-diagnostics.md](references/14-sdk-caching-and-diagnostics.md) | SDK 5.15.x caching, Builder diagnostics headers, nested multi-instance pages, client upgrades |
 
 ## Examples
 

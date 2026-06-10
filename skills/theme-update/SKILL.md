@@ -264,3 +264,17 @@ git push origin main
 - **Custom components**: User components not in original Pilot are always preserved — never delete or move them
 - **Route structure**: If user reorganized routes, don't force Pilot's structure — apply route logic changes to user's structure instead
 - **CSS conflicts**: Pilot may change Tailwind classes or base styles — these need careful merge to avoid breaking user styling
+
+## SDK-Only Bumps (`@weaverse/hydrogen`)
+
+Sometimes the ask is only "update the Weaverse SDK", not a full theme update. Verified procedure (used for a 5.5.0 → 5.15.1 client jump):
+
+1. **Baseline before bumping.** Run `npx react-router typegen && npm run typecheck` on the CURRENT version and record every error (client forks usually have pre-existing failures). After the bump, diff against this baseline — you only own the delta. Without the baseline you'll chase errors that were always there.
+2. **Peer check first**: `npm view @weaverse/hydrogen@<target> peerDependencies`. 5.15.x needs `@shopify/hydrogen >=2025.5`, react 19, react-router 7, `@shopify/remix-oxygen` 3. `react-error-boundary` and `@weaverse/schema` arrive transitively — their absence in the theme's package.json is fine.
+3. **Known break at 5.15**: `errorComponent` is typed `FC<{ error: unknown }>` (was an Error-like object). Port upstream Pilot's `GenericError`, which narrows at runtime (`error && typeof error === "object" && "message" in error`).
+4. Finish with full `shopify hydrogen build --codegen` — typecheck alone misses bundler-level issues.
+
+## Weaverse-Internal: Pilot Lock & Demo Deploy
+
+- Pilot lives inside the Weaverse pnpm monorepo but ships an **npm** lockfile. Refresh it with `npm i --package-lock-only --workspaces=false`; plain `npm i` fails on the monorepo's `catalog:` protocol.
+- Deploying `pilot.weaverse.dev`: merge to `Weaverse/pilot` `main`, then `gh repo sync Weaverse/pilot-demo --source Weaverse/pilot` — the fork carries the Oxygen deploy action and ships on sync (~1 min).
