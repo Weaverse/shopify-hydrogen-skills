@@ -203,3 +203,36 @@ const cart = createCartHandler({
   },
 })
 ```
+
+## Client-Side Cart Bootstrap Pitfalls
+
+When the cart moves out of the root loader into a post-hydration `/api/cart`
+fetch (to keep SSR documents anonymous for full-page caching), four bugs
+follow unless designed around. All four were flagged by review and fixed in
+Weaverse/pilot#409 + #410 (June 2026):
+
+1. **Locale loss** — a hard-coded `load("/api/cart")` runs the cart query in
+   the default market on `/fr-ca/...` pages. Build the URL with the active
+   locale prefix (`usePrefixPathWithLocale("/api/cart")`).
+2. **Null-response race** — a pre-cookie bootstrap can resolve `cart: null`
+   AFTER a fast add-to-cart mutation created a cart, wiping it. Non-null
+   responses can be guarded by `updatedAt` comparison; null ones carry no
+   timestamp — snapshot a module-level mutation counter before each load and
+   only clear the store if it is unchanged.
+3. **Stale token/cart after redirects** — the old root loader revalidated on
+   auth actions and cookie-setting GET redirects (discount-code routes); a
+   mount-only bootstrap doesn't. Re-run the load on `location.key`.
+4. **`cart_viewed` with null cart** — Hydrogen's `<Analytics.CartView>`
+   publish effect is keyed on `[publish, url, shopId]` and NEVER replays when
+   the provider's cart context updates later. Direct `/cart` landings fire
+   before the bootstrap resolves. Gate the component on a `cartBootstrapped`
+   store flag set when the first response is applied.
+
+**Non-bugs (verified against Hydrogen dist, don't "fix"):**
+- The null→bootstrapped-cart transition does NOT emit fake add-to-cart
+  events: `CartAnalytics` resolves loader promises through the same
+  `setCarts` path and gates emission on the `cartLastUpdatedAt` localStorage
+  record either way.
+- Optimistic carts don't leak synthetic line ids into analytics as long as
+  the optimistic transform preserves `updatedAt` — `CartAnalytics` ignores
+  carts whose `updatedAt` matches the previous one.
