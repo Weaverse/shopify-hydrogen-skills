@@ -91,3 +91,4 @@ For offline/cached reference when the search script is unavailable:
 | [references/01-setup.md](references/01-setup.md) | Full `server.ts` setup, env vars, session, `createHydrogenContext` options |
 | [references/02-caching.md](references/02-caching.md) | Cache strategies, `AllCacheOptions` type, `generateCacheControlHeader` |
 | [references/03-cart.md](references/03-cart.md) | Cart route setup, `CartForm` examples, `useOptimisticCart` patterns |
+| [references/04-ssr-performance.md](references/04-ssr-performance.md) | SSR bundle diet (worker inlines dynamic imports — `resolveId` stub pattern), bundle audit, TTFB measurement methodology |
