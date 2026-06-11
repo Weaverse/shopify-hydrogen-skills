@@ -226,7 +226,13 @@ Weaverse/pilot#409 + #410 (June 2026):
    publish effect is keyed on `[publish, url, shopId]` and NEVER replays when
    the provider's cart context updates later. Direct `/cart` landings fire
    before the bootstrap resolves. Gate the component on a `cartBootstrapped`
-   store flag set when the first response is applied.
+   store flag set when the first response is applied — and RESET the flag at
+   the start of every navigation re-load, or GET cart mutators
+   (`/discount/:code?redirect=/cart`) publish the pre-navigation cart.
+5. **Module-ref resurrection** — if a `useCart()` merge consults a
+   module-level "freshest fetcher cart" ref before the store, an accepted
+   `cart: null` bootstrap must clear that ref too, or it keeps resurrecting
+   a cart whose cookie expired or was completed at checkout.
 
 **Non-bugs (verified against Hydrogen dist, don't "fix"):**
 - The null→bootstrapped-cart transition does NOT emit fake add-to-cart
@@ -236,3 +242,14 @@ Weaverse/pilot#409 + #410 (June 2026):
 - Optimistic carts don't leak synthetic line ids into analytics as long as
   the optimistic transform preserves `updatedAt` — `CartAnalytics` ignores
   carts whose `updatedAt` matches the previous one.
+
+## Oxygen FPC keying fact (for review triage)
+
+Oxygen's full-page cache keys entries by the **full request URL including the
+query string**, plus `Vary`'d headers; the worker is not invoked on hits.
+(shopify.dev/docs/storefronts/headless/hydrogen/caching/full-page-cache,
+Shopify/hydrogen discussion #2513.) Claims that it "matches by path and
+ignores search params" are wrong — `/search?q=a` vs `?q=b` are distinct
+entries. Query-param diversity costs cache cardinality, never wrong content.
+`Vary: Cookie` makes every cookie string a separate key — it effectively
+disables FPC; prefer gating storage on personalization cookies instead.
