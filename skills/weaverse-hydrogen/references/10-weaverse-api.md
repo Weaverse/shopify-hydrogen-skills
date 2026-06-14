@@ -255,7 +255,7 @@ function ParentComponent() {
 
 ## createSchema()
 
-Define component schemas with Zod validation at build time.
+Define component schemas with Zod validation at build/dev time. Since `@weaverse/hydrogen` 5.16.0 the Zod runtime is dev-only — `createSchema()` is an identity pass-through in production and Zod tree-shakes out of the bundle.
 
 ```tsx
 import { createSchema } from '@weaverse/hydrogen';

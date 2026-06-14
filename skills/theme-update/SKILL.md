@@ -270,7 +270,7 @@ git push origin main
 Sometimes the ask is only "update the Weaverse SDK", not a full theme update. Verified procedure (used for a 5.5.0 → 5.15.1 client jump):
 
 1. **Baseline before bumping.** Run `npx react-router typegen && npm run typecheck` on the CURRENT version and record every error (client forks usually have pre-existing failures). After the bump, diff against this baseline — you only own the delta. Without the baseline you'll chase errors that were always there.
-2. **Peer check first**: `npm view @weaverse/hydrogen@<target> peerDependencies`. 5.15.x needs `@shopify/hydrogen >=2025.5`, react 19, react-router 7, `@shopify/remix-oxygen` 3. `react-error-boundary` and `@weaverse/schema` arrive transitively — their absence in the theme's package.json is fine.
+2. **Peer check first**: `npm view @weaverse/hydrogen@<target> peerDependencies`. 5.15.x/5.16.x need `@shopify/hydrogen >=2025.5`, react 19, react-router 7, `@shopify/remix-oxygen` 3. `react-error-boundary` and `@weaverse/schema` arrive transitively — their absence in the theme's package.json is fine.
 3. **Known break at 5.15**: `errorComponent` is typed `FC<{ error: unknown }>` (was an Error-like object). Port upstream Pilot's `GenericError`, which narrows at runtime (`error && typeof error === "object" && "message" in error`).
 4. Finish with full `shopify hydrogen build --codegen` — typecheck alone misses bundler-level issues.
 
