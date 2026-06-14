@@ -4,7 +4,9 @@
 
 ## `createSchema()` Function
 
-The recommended way to define component schemas. Provides Zod validation at build time and TypeScript inference.
+The recommended way to define component schemas. Provides Zod validation at build/dev time and TypeScript inference.
+
+> **Production builds (since `@weaverse/hydrogen` 5.16.0 / `@weaverse/schema` 0.10.0):** the Zod runtime is isolated behind a dev-only boundary, so `createSchema()` is an identity pass-through in production and Zod tree-shakes out of the storefront bundle (~20KB gzip off client + SSR). Your schema code is unchanged — validation still runs in dev/build.
 
 ```tsx
 import { createSchema } from '@weaverse/hydrogen';

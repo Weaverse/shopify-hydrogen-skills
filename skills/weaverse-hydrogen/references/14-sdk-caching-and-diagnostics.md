@@ -1,6 +1,6 @@
-# SDK Caching, Diagnostics & Multi-Instance Pages (5.15.x)
+# SDK Caching, Diagnostics & Multi-Instance Pages (5.15.x–5.16.x)
 
-Verified against `@weaverse/hydrogen` 5.15.1 source and live production probes (June 2026).
+Verified against `@weaverse/hydrogen` 5.16.1 source and live production probes (June 2026). 5.16.0 (schema 0.10.0) additionally moves the Zod validation runtime to a dev-only boundary so it tree-shakes out of the production storefront bundle (~20KB gzip off client + SSR).
 
 ## How the SDK caches Builder API responses
 
@@ -59,7 +59,7 @@ A route tree may render **multiple `<WeaverseContent />` instances on one URL** 
 Process that separates real breakage from noise:
 
 1. **Baseline first**: run `npx react-router typegen && tsc --noEmit` on the *current* version and record the errors. Client forks usually have pre-existing failures; you only own the delta.
-2. Check peers: `npm view @weaverse/hydrogen@<version> peerDependencies` — 5.15 needs `@shopify/hydrogen >=2025.5`, react 19, react-router 7.
+2. Check peers: `npm view @weaverse/hydrogen@<version> peerDependencies` — 5.15/5.16 need `@shopify/hydrogen >=2025.5`, react 19, react-router 7.
 3. Bump, reinstall, re-run typecheck; diff against the baseline.
 4. Known break at **5.15**: `errorComponent` is now `FC<{ error: unknown }>` (was an Error-like shape). Port the upstream Pilot `GenericError` which narrows `error` at runtime (`typeof error === "object" && "message" in error`).
 5. Finish with a full `shopify hydrogen build --codegen`.
