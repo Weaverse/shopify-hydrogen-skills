@@ -55,8 +55,9 @@ Authorization: Bearer <WEAVERSE_API_KEY>
 Updating content is always **read ids first, then patch by id**. You cannot patch blindly — you must target existing item ids.
 
 1. **Find the project** — `GET /projects`, match by name, keep its `id`.
-2. **Read the page with ids** — `GET /projects/:projectId/pages/:type/*handle?meta=true`. The `meta=true` flag adds `_weaverse: { id, schemaVersion }` to each block so you can round-trip back to the exact item id.
-3. **Build the patch** — for each item you want to change, send only the fields that change inside `data` (it shallow-merges, so untouched fields stay):
+2. **Pick a locale** — `GET /projects/:projectId/languages`. Keep the `isDefault: true` code (e.g. `en-us`). You need it for the next steps.
+3. **Read the page** — `GET /projects/:projectId/pages/:type/*handle?locale=<code>`. **Always pass `locale`.** With no `locale` the resolver only tries the empty locale and the legacy default `en-us`, so a market-first project or any project whose default locale isn't `en-us` returns `PAGE_NOT_FOUND` even though the page exists. The default `weaverse` format already returns **every item with its `id`** — that id is exactly what the patch needs, so **`?meta=true` is not required** (it only matters for `portable-text` reads).
+4. **Build the patch** — for each item you want to change, send only the fields that change inside `data` (it shallow-merges, so untouched fields stay). Include the **same `locale`** you read with:
    ```json
    {
      "locale": "en-us",
@@ -65,8 +66,8 @@ Updating content is always **read ids first, then patch by id**. You cannot patc
      ]
    }
    ```
-4. **Patch** — `PATCH /projects/:projectId/pages/:type/*handle` (use `POST` if your client/proxy can't send a `PATCH` body). Max **100 items per request** — chunk larger edits.
-5. **Check the response** — `{ object: "page_update", updated, notFound, updatedIds, notFoundIds }`. A non-empty `notFoundIds` means those ids aren't on the page — re-read with `meta=true`, don't retry the same ids.
+5. **Patch** — `PATCH /projects/:projectId/pages/:type/*handle` (use `POST` if your client/proxy can't send a `PATCH` body). The page is resolved with the **same locale rules as the read** — a missing/wrong `locale` can hit `PAGE_NOT_FOUND` or patch the wrong locale's page. Max **100 items per request** — chunk larger edits.
+6. **Check the response** — `{ object: "page_update", updated, notFound, updatedIds, notFoundIds }`. A non-empty `notFoundIds` means those ids aren't on the resolved page (wrong page, wrong locale, or stale ids) — re-read the page with the right `locale`, don't retry the same ids.
 
 A successful patch invalidates caches and goes live through `api.weaverse.io` — the same path a Studio save takes.
 
@@ -82,6 +83,8 @@ ARTICLE, CART, CUSTOMER, NOT_FOUND, PASSWORD, SEARCH, CUSTOM
 - **Singletons** (`INDEX`, `ALL_PRODUCTS`, `COLLECTION_LIST`, `CART`, `CUSTOMER`, `NOT_FOUND`, `PASSWORD`, `SEARCH`) — one page per project, **omit the handle**.
 - **CUSTOM** — addressed by its path (the splat may contain slashes, e.g. `blogs/news`).
 - **Templated** (`PRODUCT`, `COLLECTION`, `PAGE`, `BLOG`, `ARTICLE`) — keep a shared default template at the empty handle, so a **missing handle is rejected** (it won't silently edit the template). Pass the real handle.
+
+**Locale always matters.** On reads/updates, always pass a real `locale` code (from List languages). In list-pages responses, a row's `locale` may be `null` for market-first projects (rows are keyed by market, not locale) — don't echo `null` back; pass a real code and let resolution map it to the market (e.g. `locale=en-us` resolves market `us`).
 
 See `references/endpoints.md` for the full endpoint list, query params, and response shapes.
 
@@ -119,7 +122,7 @@ node scripts/weaverse_content_api.mjs projects
 node scripts/weaverse_content_api.mjs languages <projectId>
 node scripts/weaverse_content_api.mjs theme <projectId>
 node scripts/weaverse_content_api.mjs pages <projectId> [type]
-node scripts/weaverse_content_api.mjs page <projectId> <type> [handle]   # adds ?meta=true
+node scripts/weaverse_content_api.mjs page <projectId> <type> [handle] [locale]   # reads with ?locale
 node scripts/weaverse_content_api.mjs update <projectId> <type> <handle> <patch.json>
 node scripts/weaverse_content_api.mjs delete <projectId> <type> <handle...>
 ```
@@ -129,16 +132,18 @@ Use it to inspect a project quickly and to apply patch files. For anything the s
 ## Red Flags
 
 - **Trying to create a page/project/section via the API** — it can't. Use `generating-weaverse-project-json` + import for new structure.
-- **Patching without reading ids first** — you must target existing item ids. Always `GET ...?meta=true` before a patch.
-- **Ignoring `notFoundIds` in the response** — it means your ids aren't on that page (wrong page, wrong locale, or stale ids). Re-read, don't retry.
+- **Patching without reading ids first** — you must target existing item ids. Read the page first (with the right `locale`); the default `weaverse` read already includes every item `id`, so you do **not** need `?meta=true`.
+- **Omitting `locale` on a page read/update** — with no `locale` the resolver only tries the empty locale and legacy `en-us`, so non-`en-us` or market-first projects return `PAGE_NOT_FOUND` even when the page exists. Always pass a real `locale` from List languages.
+- **Echoing back `locale: null`** — list-pages rows can be `null` for market-first projects. Don't send `null`; pass a real code and let resolution map it to the market.
+- **Adding `?meta=true` for normal edits** — it only affects `portable-text` reads (where it restores `_weaverse.id`). On a `weaverse`-format read it changes nothing.
+- **Ignoring `notFoundIds` in the response** — it means your ids aren't on the resolved page (wrong page, wrong locale, or stale ids). Re-read with the right locale, don't retry.
 - **Sending more than 100 items in one update** (or 500 targets in one delete) — chunk the request.
 - **Editing a templated type with an empty handle** — rejected by design. Pass the real handle.
-- **Assuming `locale` falls back on list/update** — `GET pages` and updates match the locale **exactly** (no fallback); only single-page `GET` falls back to the default. Pass the right locale.
 - **Hardcoding the token or using `?apiKey=`** — use `Authorization: Bearer` from an env var.
 - **Replacing whole `data` objects** — updates shallow-merge. Send only changed fields; don't resend the entire `data` and risk wiping nested values you didn't read.
 - **Putting a non-Shopify URL into a media field after "upload"** — finish the `fileCreate` step and use the returned Shopify CDN URL, not the staged/temporary `resourceUrl`.
 
 ## Related skills
 
-- `generating-weaverse-project-json` — creates the import JSON that establishes the structure this API then updates. The item ids you patch here come from that JSON (or from a Studio-built page read back with `meta=true`).
+- `generating-weaverse-project-json` — creates the import JSON that establishes the structure this API then updates. The item ids you patch here come from that JSON (or from a page read back with the right `locale`).
 - `cloning-websites-to-weaverse` / `figma-to-weaverse` — produce the section plan that feeds the JSON generator.

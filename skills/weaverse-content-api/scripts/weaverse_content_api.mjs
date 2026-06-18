@@ -7,7 +7,7 @@
 //   node weaverse_content_api.mjs languages <projectId>
 //   node weaverse_content_api.mjs theme <projectId> [locale]
 //   node weaverse_content_api.mjs pages <projectId> [type]
-//   node weaverse_content_api.mjs page <projectId> <type> [handle]      # adds ?meta=true
+//   node weaverse_content_api.mjs page <projectId> <type> [handle] [locale]   # reads with ?locale
 //   node weaverse_content_api.mjs update <projectId> <type> <handle> <patch.json>
 //   node weaverse_content_api.mjs delete <projectId> <type> <handle...>
 //
@@ -30,7 +30,7 @@ function usage(msg) {
       "  languages <projectId>",
       "  theme <projectId> [locale]",
       "  pages <projectId> [type]",
-      "  page <projectId> <type> [handle]",
+      "  page <projectId> <type> [handle] [locale]",
       "  update <projectId> <type> <handle> <patch.json>",
       "  delete <projectId> <type> <handle...>",
     ].join("\n")
@@ -95,8 +95,9 @@ switch (cmd) {
     break;
   }
   case "page": {
-    const [projectId, type, handle = ""] = rest;
-    if (!projectId || !type) usage("page needs <projectId> <type> [handle]");
+    const [projectId, type, handle = "", locale] = rest;
+    if (!projectId || !type)
+      usage("page needs <projectId> <type> [handle] [locale]");
     // splat handle may contain slashes — encode each segment, keep separators
     const splat = handle
       .split("/")
@@ -104,7 +105,11 @@ switch (cmd) {
       .map(enc)
       .join("/");
     const path = `/projects/${enc(projectId)}/pages/${enc(type)}${splat ? `/${splat}` : ""}`;
-    out = await call(`${path}?meta=true`);
+    // Always pass a locale when given — without it the resolver only tries ""
+    // and legacy en-us, so non-en-us / market-first pages 404. The default
+    // weaverse format already returns item ids, so no ?meta=true is needed.
+    const q = locale ? `?locale=${enc(locale)}` : "";
+    out = await call(`${path}${q}`);
     break;
   }
   case "update": {
