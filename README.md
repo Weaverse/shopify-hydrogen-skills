@@ -27,8 +27,24 @@ For manual per-agent setup, see [INSTALL.md](INSTALL.md).
 | [`theme-update`](./skills/theme-update/SKILL.md) | Safe Pilot theme updates — detect version, plan changes, preserve customizations, verify build | Updating a customer's Pilot theme |
 | [`weaverse-integration`](./skills/weaverse-integration/SKILL.md) | Integrate Weaverse into an existing Hydrogen project — analyze codebase, convert components, set up SDK, configure routes | Adding Weaverse to a project that doesn't use it yet |
 | [`cloning-websites-to-weaverse`](./skills/cloning-websites-to-weaverse/SKILL.md) | Recreate reference websites as Hydrogen + Weaverse pages with preview checkpoints and section mapping | Cloning a site or brand hub into Weaverse |
+| [`figma-to-weaverse`](./skills/figma-to-weaverse/SKILL.md) | Turn a Figma design into Weaverse sections via Figma MCP — token mapping, content manifest, preview checkpoint | Building a storefront from a Figma file |
 | [`generating-weaverse-project-json`](./skills/generating-weaverse-project-json/SKILL.md) | Generate import-ready Weaverse project export JSON from section plans, specs, or existing exports | Building Weaverse import files |
+| [`weaverse-content-api`](./skills/weaverse-content-api/SKILL.md) | Read/update live Weaverse content over the REST Content API — bulk edits, AI content pipelines, Shopify resource upload | Updating a project after it exists |
 | [`hydrogen-analytics-tracking`](./skills/hydrogen-analytics-tracking/SKILL.md) | End-to-end tracking on Hydrogen — GTM, GA4 (browser + Measurement Protocol), Meta Pixel + CAPI, Google Ads, Consent Mode v2, CSP, Oxygen FPC, Weaverse webhook forwarding | Implementing analytics/conversion tracking on a Hydrogen storefront |
+
+### Weaverse build pipeline
+
+The site-building skills chain from a source (website or Figma) to a live, maintainable Weaverse project:
+
+```
+INPUT ADAPTERS                          GENERATE                       DELIVER
+cloning-websites-to-weaverse  ┐
+                              ├─→  generating-weaverse-project-json ─→  import once into Studio (creates structure)
+figma-to-weaverse             ┘                                    └─→  weaverse-content-api (updates content after,
+                                                                         bulk edits, Shopify resource upload)
+```
+
+Initial structure is created by importing the generated JSON. Everything after — copy, images, localization, bulk edits — goes through the Content API, which updates existing items but cannot create new ones.
 
 ---
 
@@ -96,10 +112,20 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   ├── cloning-websites-to-weaverse/      # Clone sites into Weaverse
 │   │   └── SKILL.md
 │
-│   └── generating-weaverse-project-json/  # Weaverse import JSON generator
+│   ├── figma-to-weaverse/            # Figma design → Weaverse sections
+│   │   ├── SKILL.md
+│   │   └── references/              # Figma MCP extraction + token mapping
+│
+│   ├── generating-weaverse-project-json/  # Weaverse import JSON generator
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── scripts/
+│
+│   └── weaverse-content-api/         # Live content read/update over REST
 │       ├── SKILL.md
-│       ├── references/
+│       ├── references/              # Endpoints + Portable Text
 │       └── scripts/
+│           └── weaverse_content_api.mjs
 │
 ├── scripts/                       # Live doc fetching (shared)
 │   ├── search_shopify_docs.mjs

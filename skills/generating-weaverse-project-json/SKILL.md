@@ -17,12 +17,19 @@ The output is a single JSON file matching the schema in `references/project-json
 
 This skill accepts any of these as input:
 
-- **Section mapping** from `cloning-websites-to-weaverse` (migration flow)
+- **Section mapping** from `cloning-websites-to-weaverse` (website migration flow)
+- **Section mapping + token table** from `figma-to-weaverse` (Figma design flow)
 - **Design spec** describing pages, sections, and content
 - **Verbal description** of what the storefront should look like
 - **Existing export** to modify or extend
 
 The only hard requirement: you need to know which section types to use. Read `app/weaverse/components.ts` to get the list of registered sections and blocks.
+
+## Delivery
+
+This skill produces an **import JSON** that establishes the project structure — pages, sections, and initial content. That JSON is **imported once** into the Weaverse Studio editor to create the project.
+
+After the structure exists, ongoing content edits (copy, images, localization, bulk updates) should go through the **`weaverse-content-api`** skill, not by re-importing. The Content API can only update items that already exist, so the import-then-update split matters: use this skill to create structure, `weaverse-content-api` to maintain it. Keep the item ids stable between the two.
 
 ## Generation Steps
 

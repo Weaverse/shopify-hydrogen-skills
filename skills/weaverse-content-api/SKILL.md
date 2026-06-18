@@ -1,0 +1,144 @@
+---
+name: weaverse-content-api
+description: Use when reading or updating live Weaverse content programmatically — pulling projects/pages/theme settings, bulk-editing page content, pushing AI-generated copy, deleting pages, or uploading media to Shopify for use in Weaverse. Triggers on requests to update a Weaverse project via API, push content to a live project, run bulk content edits, or upload images/assets to Shopify from automation.
+---
+
+# Weaverse Content API
+
+Read and edit live Weaverse content (projects, pages, theme settings, languages) outside the Studio editor, over an authenticated REST API. Use it for bulk edits, AI/automation content pipelines, and pushing updates into a project that already exists.
+
+- **Base URL:** `https://studio.weaverse.io/api/v1/content`
+- **Machine spec:** `GET https://studio.weaverse.io/api/v1/content/openapi.json` (OpenAPI 3.1, no auth) — the authoritative contract
+- Full endpoint details: `references/endpoints.md`. Rich-text/Portable Text details: `references/portable-text.md`.
+- Helper script: `scripts/weaverse_content_api.mjs` (zero-dependency, Node 18+).
+
+## The one thing you must understand first
+
+**The Content API updates content — it does NOT create pages or projects.**
+
+`PATCH .../pages/...` shallow-merges `data` into items **already on the page**. Item ids that don't exist are reported as `notFound` and silently skipped — never created. There is no "create page" or "create project" endpoint.
+
+So the lifecycle is:
+
+```
+Create initial structure   →  import a project JSON into Studio   (use generating-weaverse-project-json)
+Update content afterwards   →  Content API                        (this skill)
+```
+
+If you need to build a brand-new storefront, page, or section, this is the wrong tool — generate import JSON with `generating-weaverse-project-json` and import it once. Come back here for everything after that: editing copy, swapping images, localizing, bulk edits, deletes.
+
+## When to Use
+
+- Push AI-generated or translated copy into an existing live project
+- Bulk-edit content across many pages/items
+- Read current page content/items to diff or round-trip
+- Delete pages in bulk
+- Upload an image/video to Shopify and reference its CDN URL in a Weaverse item
+
+Do not use it to create pages, create projects, or add new sections/blocks to a page.
+
+## Authentication
+
+Every endpoint except `openapi.json` needs a bearer token:
+
+```
+Authorization: Bearer <WEAVERSE_API_KEY>
+```
+
+- Get the key from **Weaverse Dashboard → Account → Content APIs**.
+- A token is scoped to one shop. Requests for a project owned by another shop return `403 FORBIDDEN`.
+- The same token also authorizes the Shopify proxy (see "Upload resources to Shopify").
+- Store it in an env var (`WEAVERSE_API_KEY`). Never hardcode it, never pass it as a `?apiKey=` query param outside local testing — query params leak into server/CDN logs.
+
+## Core update workflow
+
+Updating content is always **read ids first, then patch by id**. You cannot patch blindly — you must target existing item ids.
+
+1. **Find the project** — `GET /projects`, match by name, keep its `id`.
+2. **Read the page with ids** — `GET /projects/:projectId/pages/:type/*handle?meta=true`. The `meta=true` flag adds `_weaverse: { id, schemaVersion }` to each block so you can round-trip back to the exact item id.
+3. **Build the patch** — for each item you want to change, send only the fields that change inside `data` (it shallow-merges, so untouched fields stay):
+   ```json
+   {
+     "locale": "en-us",
+     "items": [
+       { "id": "itm1", "data": { "heading": "New heading" } }
+     ]
+   }
+   ```
+4. **Patch** — `PATCH /projects/:projectId/pages/:type/*handle` (use `POST` if your client/proxy can't send a `PATCH` body). Max **100 items per request** — chunk larger edits.
+5. **Check the response** — `{ object: "page_update", updated, notFound, updatedIds, notFoundIds }`. A non-empty `notFoundIds` means those ids aren't on the page — re-read with `meta=true`, don't retry the same ids.
+
+A successful patch invalidates caches and goes live through `api.weaverse.io` — the same path a Studio save takes.
+
+### Page addressing
+
+Pages are addressed by Prisma page type + handle:
+
+```
+INDEX, PRODUCT, ALL_PRODUCTS, COLLECTION, COLLECTION_LIST, PAGE, BLOG,
+ARTICLE, CART, CUSTOMER, NOT_FOUND, PASSWORD, SEARCH, CUSTOM
+```
+
+- **Singletons** (`INDEX`, `ALL_PRODUCTS`, `COLLECTION_LIST`, `CART`, `CUSTOMER`, `NOT_FOUND`, `PASSWORD`, `SEARCH`) — one page per project, **omit the handle**.
+- **CUSTOM** — addressed by its path (the splat may contain slashes, e.g. `blogs/news`).
+- **Templated** (`PRODUCT`, `COLLECTION`, `PAGE`, `BLOG`, `ARTICLE`) — keep a shared default template at the empty handle, so a **missing handle is rejected** (it won't silently edit the template). Pass the real handle.
+
+See `references/endpoints.md` for the full endpoint list, query params, and response shapes.
+
+## Upload resources to Shopify
+
+The Content API itself has no upload endpoint. To get media into a Weaverse item, upload it to Shopify first, then reference the returned CDN URL.
+
+Upload goes through the **Weaverse Shopify proxy**, which accepts the same Weaverse token:
+
+```
+POST https://studio.weaverse.io/api/admin-graphql
+Authorization: Bearer <WEAVERSE_API_KEY>
+Content-Type: application/json
+```
+
+The body is a normal Shopify Admin GraphQL request (`{ "query": "...", "variables": {...} }`). Upload is the standard two-step Shopify flow:
+
+1. `stagedUploadsCreate` → get a `url` + `parameters` (a presigned target) and a `resourceUrl`.
+2. Upload the file bytes to that staged `url` with the returned `parameters` (multipart POST, not through the proxy).
+3. `fileCreate` with `originalSource: <resourceUrl>` → Shopify ingests it and returns the permanent CDN file.
+4. Read back the file's `image.url` / `sources` and put that CDN URL into the Weaverse item `data` via the update workflow above.
+
+Reference implementation in the builder repo: `app/backend/admin/file.server.ts` (`generateStagedUploadLinks` → `stagedUploadsCreate`, then `fileCreate`). When in doubt, mirror its mutations and field selections.
+
+> Alternatively, when a connected Shopify MCP is available, its image-upload / `graphql_mutation` tools do the same job without the proxy. Use whichever is connected.
+
+## Helper script
+
+`scripts/weaverse_content_api.mjs` wraps auth and the common calls. It reads `WEAVERSE_API_KEY` from the environment.
+
+```bash
+export WEAVERSE_API_KEY=...
+
+node scripts/weaverse_content_api.mjs projects
+node scripts/weaverse_content_api.mjs languages <projectId>
+node scripts/weaverse_content_api.mjs theme <projectId>
+node scripts/weaverse_content_api.mjs pages <projectId> [type]
+node scripts/weaverse_content_api.mjs page <projectId> <type> [handle]   # adds ?meta=true
+node scripts/weaverse_content_api.mjs update <projectId> <type> <handle> <patch.json>
+node scripts/weaverse_content_api.mjs delete <projectId> <type> <handle...>
+```
+
+Use it to inspect a project quickly and to apply patch files. For anything the script doesn't cover, call the REST endpoints directly or read `openapi.json`.
+
+## Red Flags
+
+- **Trying to create a page/project/section via the API** — it can't. Use `generating-weaverse-project-json` + import for new structure.
+- **Patching without reading ids first** — you must target existing item ids. Always `GET ...?meta=true` before a patch.
+- **Ignoring `notFoundIds` in the response** — it means your ids aren't on that page (wrong page, wrong locale, or stale ids). Re-read, don't retry.
+- **Sending more than 100 items in one update** (or 500 targets in one delete) — chunk the request.
+- **Editing a templated type with an empty handle** — rejected by design. Pass the real handle.
+- **Assuming `locale` falls back on list/update** — `GET pages` and updates match the locale **exactly** (no fallback); only single-page `GET` falls back to the default. Pass the right locale.
+- **Hardcoding the token or using `?apiKey=`** — use `Authorization: Bearer` from an env var.
+- **Replacing whole `data` objects** — updates shallow-merge. Send only changed fields; don't resend the entire `data` and risk wiping nested values you didn't read.
+- **Putting a non-Shopify URL into a media field after "upload"** — finish the `fileCreate` step and use the returned Shopify CDN URL, not the staged/temporary `resourceUrl`.
+
+## Related skills
+
+- `generating-weaverse-project-json` — creates the import JSON that establishes the structure this API then updates. The item ids you patch here come from that JSON (or from a Studio-built page read back with `meta=true`).
+- `cloning-websites-to-weaverse` / `figma-to-weaverse` — produce the section plan that feeds the JSON generator.

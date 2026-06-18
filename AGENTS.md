@@ -47,7 +47,14 @@ skills/
     SKILL.md                       # Full 6-phase integration guide
   cloning-websites-to-weaverse/    # Clone reference sites into Weaverse pages
     SKILL.md
+  figma-to-weaverse/               # Build Weaverse sections from a Figma design
+    SKILL.md
+    references/
   generating-weaverse-project-json/ # Generate Weaverse import JSON files
+    SKILL.md
+    references/
+    scripts/
+  weaverse-content-api/            # Read/update live Weaverse content over REST
     SKILL.md
     references/
     scripts/
@@ -81,7 +88,9 @@ All scripts use Node.js built-ins only (no dependencies needed). Require Node.js
 | `hydrogen-cookbooks/` | Authored in this repo with Weaverse-specific patterns |
 | `hydrogen-upgrades/` | Authored in this repo · Cross-check with `shopify.dev` via scripts |
 | `cloning-websites-to-weaverse/` | Authored in this repo with Weaverse-specific migration workflow |
+| `figma-to-weaverse/` | Authored in this repo · Figma MCP extraction; reuses cloning skill's matching rules |
 | `generating-weaverse-project-json/` | Authored in this repo with import schema references and validator |
+| `weaverse-content-api/` | Authored in this repo from builder `docs/content-api.md` · Live: `/openapi.json` |
 
 **Rule:** Never write API docs from memory or training data. Use the scripts to fetch authoritative content.
 
