@@ -72,6 +72,19 @@ If the server generates `event_id`, the browser already pushed its dataLayer eve
 
 ---
 
+## Experiment exposure (A/B tests)
+
+A/B tests on a Weaverse storefront use [`@weaverse/experiments`](https://www.npmjs.com/package/@weaverse/experiments) — deterministic, project-level variant assignment. Exposure rides the **same** pipeline as every other event:
+
+- **Segment downstream events by variant.** Pass the resolved assignments to `<Analytics.Provider customData={{ experiments: { '<id>': '<variant>' } }}>`. `customData` is merged into every event, so `add_to_cart` / `purchase` are already tagged with the variant — this is what measures conversion *impact*, not just impressions. No need to re-attach the experiment per event.
+- **Fire an impression event.** Call `useAnalytics().publish('custom_experiment_viewed', { experimentId, variantId })` from the experiments `onExpose` callback, gated on `canTrack()`. Bridge `custom_experiment_viewed` → dataLayer/GA4 in your `<CustomAnalytics>` subscriber like any other custom event (`custom_` prefix required; call `ready()`).
+- **Dedup.** Exposure is an impression, not a conversion, so the `event_id` dual-send is usually unnecessary. If you forward it to `/api/track`, reuse the storefront `trackEvent()` helper.
+
+Server-side `getExperiments()` wiring lives in the `weaverse-hydrogen` skill (Multi-Project Architecture → A/B Testing).
+
+---
+
+
 ## Reference files
 
 Read these in order if you're implementing from scratch. Skip to the relevant one if you're debugging:
