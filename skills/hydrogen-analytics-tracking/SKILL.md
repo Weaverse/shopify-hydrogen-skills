@@ -113,6 +113,10 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 
 5. **Treating "consent denied" as "send nothing".** Meta CAPI's relaxed pattern (LDU flag + ip/ua/fbp/fbc only, no hashed PII) recovers a large chunk of optimisation signal compliantly. GA4 Consent Mode v2 modeled conversions work the same way. **Fix:** in the server forwarder, when `ad_storage !== "granted"` drop hashed PII but still send the event with `data_processing_options: ["LDU"]`.
 
+6. **Pasting a Liquid `dataLayer.push` snippet into Hydrogen.** Merchants often bring an existing theme snippet using Liquid tags (`{{ product.id }}`, `{{ collection.title }}`, `{{ product.price | money_without_currency }}`). **These do nothing in Hydrogen** — it's React/SSR, there is no Liquid at runtime, so the braces render as literal text or break. **Fix:** rebuild the same object from Hydrogen data and push it in JS. Liquid → Hydrogen mapping: `{{ product.id }}` → `product.id`, `{{ product.title }}` → `product.title`, `{{ product.price | money_without_currency }}` → `product.priceRange?.minVariantPrice?.amount` (a string, no currency symbol), `{{ collection.id/title }}` → `collection.id/title`.
+
+7. **Expecting `select_item` / `view_item_list` from a built-in Hydrogen analytics event.** GA4 list events don't map to cart events. `select_item` is a **click** (user clicks a product card in a list) — fire it from the product card's `onClick` on the collection/PLP, where you already hold the product + collection + index. `view_item_list` is a **view** — push it from the `COLLECTION_VIEWED` subscriber in `app/components/root/custom-analytics.tsx`. Include `index` (list position) for GA4. Ensure the collection query returns `id`, `title`, `handle`, and `priceRange` so the values exist to push.
+
 ---
 
 ## The order to build it
