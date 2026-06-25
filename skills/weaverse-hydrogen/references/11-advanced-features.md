@@ -258,7 +258,7 @@ const { nonce, header, NonceProvider } = createContentSecurityPolicy({
 
 ## Multi-Project Architecture
 
-Use different Weaverse projects for different purposes:
+Use different Weaverse projects for different purposes: multi-market, multi-brand, and A/B testing. Each project is an independent theme/content set sharing one Shopify backend; route traffic by setting `projectId` (client-level function or per-route `loadPage({ projectId })`).
 
 ### Domain-Based Selection
 
@@ -278,15 +278,54 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 ```
 
+### A/B Testing — `@weaverse/experiments`
+
+For experiments, use the optional [`@weaverse/experiments`](https://www.npmjs.com/package/@weaverse/experiments) package rather than hand-rolling cookie logic. It assigns each visitor to a variant **deterministically** (sticky without a per-experiment cookie — no flicker) and maps the variant to a `projectId`. The engine + `/server` adapter are framework-agnostic (web `Request`/`Headers`/`crypto`, zero deps); `/react` is an optional `react` peer.
+
+```tsx
+// app/lib/weaverse/weaverse.server.ts
+import { getExperiments } from '@weaverse/experiments/server';
+import { WeaverseClient } from '@weaverse/hydrogen';
+
+export function createWeaverseClient(args: CreateWeaverseClientArgs) {
+  let { hydrogenContext, request, cache, themeSchema, components } = args;
+
+  // Deterministic, sticky assignment — no manual cookie handling.
+  let { projectId, assignments, headers } = getExperiments(request, {
+    experiments: [
+      {
+        id: 'green-theme-test',
+        variants: [
+          { id: 'control', projectId: args.env.WEAVERSE_PROJECT_CONTROL },
+          { id: 'b', weight: 0.2, projectId: args.env.WEAVERSE_PROJECT_VARIANT_B }, // ~17%
+        ],
+      },
+    ],
+  });
+
+  let weaverse = new WeaverseClient({
+    ...hydrogenContext, request, cache, themeSchema, components,
+    projectId, // winning variant's project
+  });
+
+  return { weaverse, assignments, headers }; // merge `headers` into the response
+}
+```
+
+**Analytics:** pass `assignments` to `<Analytics.Provider customData>` so every event is segmented by variant, and fire exposure via `useAnalytics().publish('custom_experiment_viewed', …)` gated on `canTrack()`. See the `hydrogen-analytics-tracking` skill → "Experiment exposure".
+
+> **Caching caveat (FPC):** Variant choice depends on the `_wv_vid` cookie, but Oxygen/CDN full-page caching keys on the URL and skips the worker on a cache hit — and a returning visitor's response carries no `Set-Cookie`. A cached page can therefore pin one variant for *every* visitor and corrupt the split. On experiment-driven routes, disable full-page caching or add `_wv_vid` to the cache key (`Vary`).
+
 ### Use Cases
 
-- **Multi-market:** Different designs per country/locale
-- **A/B testing:** Different project for test variants
+- **Multi-market:** Different designs per country/locale (domain/locale switch above)
+- **A/B testing:** `@weaverse/experiments` — deterministic variant → `projectId` mapping
 - **Multi-brand:** Different projects per brand on shared infrastructure
 
-See [Multi-Project Architecture Guide](https://docs.weaverse.io/guides/multi-project-architecture) for full details.
+See the [Multi-Project Architecture Guide](https://docs.weaverse.io/guides/multi-project-architecture) for full details.
 
 ---
+
 
 ## Third-Party Integration
 
