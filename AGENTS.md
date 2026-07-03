@@ -26,6 +26,8 @@ INSTALL.md                         # Detailed per-agent installation guide
 AGENTS.md                          # This file — repo guidance for agents
 .cursorrules                       # Cursor rules (synced with skill content)
 skills/
+  setup-weaverse-project/          # New project setup from zero to local preview
+    SKILL.md                       # CLI-first scaffold, demo-store boot, env/GitHub/Builder connection
   shopify-hydrogen/                # Core Hydrogen APIs (live + offline)
     SKILL.md
     references/                    # 3 reference files (cached API docs)
@@ -83,6 +85,7 @@ All scripts use Node.js built-ins only (no dependencies needed). Require Node.js
 
 | Skill | Authoritative Source |
 |-------|---------------------|
+| `setup-weaverse-project/` | Authored in this repo · Cross-check CLI behavior with `@weaverse/cli` and current docs |
 | `shopify-hydrogen/` | Live: `shopify.dev` via search script · Offline: `references/` |
 | `weaverse-hydrogen/` | This repo — authored directly · Live: `docs.weaverse.io` via scripts |
 | `hydrogen-cookbooks/` | Authored in this repo with Weaverse-specific patterns |

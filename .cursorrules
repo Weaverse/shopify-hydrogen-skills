@@ -26,6 +26,7 @@ Use these when you need the latest API references, not the offline references.
 
 | Skill | Description | When to load |
 |-------|-------------|--------------|
+| [setup-weaverse-project](./skills/setup-weaverse-project/SKILL.md) | Fast new-project onboarding — CLI-first scaffold, demo-store boot before credentials, generated `SESSION_SECRET`, GitHub repo, Builder preview connection | Starting a brand-new Weaverse Hydrogen storefront |
 | [weaverse-hydrogen](./skills/weaverse-hydrogen/SKILL.md) | Weaverse CMS integration — components, schemas, loaders, theming, Hydrogen fundamentals | Any Hydrogen + Weaverse project work |
 | [shopify-hydrogen](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen APIs — createHydrogenContext, cart, caching, pagination, SEO, CSP | Working with Hydrogen framework APIs |
 | [hydrogen-cookbooks](./skills/hydrogen-cookbooks/SKILL.md) | Step-by-step guides for building common Hydrogen features | Building specific features |
@@ -40,6 +41,7 @@ Use these when you need the latest API references, not the offline references.
 ## When to Load Which Skill
 
 - **Working on a Hydrogen + Weaverse project** → load `weaverse-hydrogen`
+- **Starting a new Weaverse Hydrogen storefront** → load `setup-weaverse-project`
 - **Using Hydrogen framework APIs** (cart, caching, SEO, etc.) → load `shopify-hydrogen`
 - **Building a specific feature** (bundles, combined listings, 3D models...) → load `hydrogen-cookbooks`
 - **Upgrading Hydrogen version** → load `hydrogen-upgrades`

@@ -20,6 +20,7 @@ For manual per-agent setup, see [INSTALL.md](INSTALL.md).
 
 | Skill | What the agent learns | When to load |
 |-------|----------------------|--------------|
+| [`setup-weaverse-project`](./skills/setup-weaverse-project/SKILL.md) | Fast new-project onboarding — CLI-first scaffold, demo-store boot before credentials, generated `SESSION_SECRET`, GitHub repo, Builder preview connection | Starting a brand-new Weaverse Hydrogen storefront or running a theme locally for the first time |
 | [`shopify-hydrogen`](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen APIs — `createHydrogenContext`, cart handler, caching, pagination, SEO, CSP | Working with `@shopify/hydrogen` APIs |
 | [`weaverse-hydrogen`](./skills/weaverse-hydrogen/SKILL.md) | Weaverse components, schemas, loaders, theming, deployment | Any Hydrogen + Weaverse project |
 | [`hydrogen-cookbooks`](./skills/hydrogen-cookbooks/SKILL.md) | Step-by-step guides — bundles, combined listings, 3D models, customer accounts, performance | Building specific features |
@@ -84,6 +85,9 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 
 ```
 ├── skills/
+│   ├── setup-weaverse-project/    # New project setup from zero to local preview
+│   │   └── SKILL.md
+│   │
 │   ├── shopify-hydrogen/          # Core Hydrogen APIs
 │   │   ├── SKILL.md
 │   │   └── references/            # Setup, caching, cart patterns
