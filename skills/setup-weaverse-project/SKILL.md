@@ -95,20 +95,21 @@ Rules:
 
 This is the centerpiece. Get a live preview running with the demo Shopify credentials before asking for Shopify credentials.
 
-```bash
-npm install                   # or pnpm/yarn per lockfile
-npm run dev                   # boots http://localhost:3456
-```
+First, make sure `.env` is complete **before** the server boots (dev servers read the environment at startup — fixing it later means a restart):
 
-The CLI-generated `.env` should already contain demo Shopify values plus the user's `WEAVERSE_PROJECT_ID`. If `.env` is missing, copy `.env.example` to `.env`, then set `WEAVERSE_PROJECT_ID` from the setup prompt.
-
-Never ask the user for `SESSION_SECRET`. Ensure it exists and is not the demo placeholder:
+- The CLI-generated `.env` should already contain demo Shopify values plus the user's `WEAVERSE_PROJECT_ID`. If `.env` is missing, copy `.env.example` to `.env`, then set `WEAVERSE_PROJECT_ID` from the setup prompt.
+- Never ask the user for `SESSION_SECRET`. If it is missing or still the demo placeholder (e.g. `foobar`), generate one and write it to `.env` now:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Write that value to `SESSION_SECRET` in `.env`.
+Then boot:
+
+```bash
+npm install                   # or pnpm/yarn per lockfile
+npm run dev                   # boots http://localhost:3456
+```
 
 Then **verify it actually came up** before saying anything succeeded:
 
