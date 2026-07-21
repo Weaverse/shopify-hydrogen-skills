@@ -213,7 +213,7 @@ Never present "agent does it" and "user does it" as the same step — pick the d
 
 ## Phase 6 — Connect the Preview to Weaverse Builder
 
-- **Today:** guide the user — Builder → **Project Settings** → **Manage URLs** (Preview URLs section) → add `http://localhost:3456` → save.
+- **Today:** guide the user — in Builder, click the URL in the preview address bar and choose **Manage previews** (or Builder → **Project Settings** → **Manage URLs**, Preview URLs section) → add `http://localhost:3456` → save.
 - **Milestone (Path B auth):** when the handshake/API is live, register the preview URL automatically via the authenticated endpoint so the user never leaves the agent. Prefer this when available.
 
 ---
