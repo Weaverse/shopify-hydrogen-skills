@@ -264,7 +264,8 @@ export let schema = createSchema({
   type: 'my-component',
   title: 'My Component',
   limit: 1,
-  enabledOn: { pages: ['PRODUCT'] },
+  enabled: ({ page, group }) =>
+    page.type === 'PRODUCT' && group === 'body',
   settings: [
     {
       group: 'Content',
@@ -279,6 +280,16 @@ export let schema = createSchema({
     children: [{ type: 'heading', content: 'Default Heading' }],
   },
 });
+```
+
+`enabled` accepts a boolean or synchronous callback with `{ page: { id, type, handle, locale }, group }`. The callback runs in the storefront preview and must return a boolean immediately. Errors, Promises, and invalid results fail closed for new insertion; existing instances remain editable. `enabledOn` is deprecated and can be migrated by moving its page/group checks into the callback.
+
+```tsx
+import type {
+  ComponentAvailabilityContext,
+  ComponentGroup,
+  Resolvable,
+} from '@weaverse/hydrogen';
 ```
 
 See [03-component-schema.md](03-component-schema.md) for full schema reference.
