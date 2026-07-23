@@ -163,9 +163,8 @@ export let schema = createSchema({
   type: 'my-component',          // Unique kebab-case identifier
   title: 'My Component',         // Display name in Studio
   limit: 1,                      // Max instances per page (optional)
-  enabledOn: {                   // Page type restrictions (optional)
-    pages: ['PRODUCT', 'COLLECTION'],
-  },
+  enabled: ({ page, group }) =>  // Dynamic insertion availability (optional)
+    ['PRODUCT', 'COLLECTION'].includes(page.type) && group === 'body',
   settings: [                    // Editor UI groups
     {
       group: 'Content',
@@ -200,7 +199,9 @@ export let schema = createSchema({
 
 **`inspector` is deprecated** — always use `settings`.
 
-**Page types for `enabledOn`:** `INDEX`, `PRODUCT`, `ALL_PRODUCTS`, `COLLECTION`, `COLLECTION_LIST`, `PAGE`, `BLOG`, `ARTICLE`, `CUSTOM`
+**`enabledOn` is deprecated** — move page/group checks into `enabled`. The callback is synchronous, runs in the storefront preview, and receives `{ page: { id, type, handle, locale }, group }`. Errors, Promises, and non-boolean results hide the component from new insertion without affecting existing instances. Studio currently evaluates the `body` group.
+
+**Page types for `enabled`:** `INDEX`, `PRODUCT`, `ALL_PRODUCTS`, `COLLECTION`, `COLLECTION_LIST`, `PAGE`, `BLOG`, `ARTICLE`, `CUSTOM`
 
 ---
 
@@ -391,7 +392,7 @@ For detailed information on specific topics, read these reference files:
 |---|------|-------|
 | 01 | [references/01-project-structure.md](references/01-project-structure.md) | Project structure & file anatomy |
 | 02 | [references/02-creating-components.md](references/02-creating-components.md) | Component creation & registration |
-| 03 | [references/03-component-schema.md](references/03-component-schema.md) | createSchema(), settings, childTypes, presets, enabledOn |
+| 03 | [references/03-component-schema.md](references/03-component-schema.md) | createSchema(), settings, childTypes, presets, enabled |
 | 04 | [references/04-input-settings.md](references/04-input-settings.md) | All input types & configurations |
 | 05 | [references/05-data-fetching.md](references/05-data-fetching.md) | Loaders, Storefront API, caching |
 | 06 | [references/06-styling-theming.md](references/06-styling-theming.md) | Tailwind, theme settings, CVA, CSS variables |

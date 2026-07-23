@@ -142,6 +142,24 @@ let MySection = forwardRef<HTMLElement, MySectionProps>((props, ref) => {
 export default MySection;
 ```
 
+### 5. Use `enabled` for Context-Aware Insertion
+
+Use a synchronous `enabled` callback when a section should only be insertable for a specific page, handle, locale, or placement group:
+
+```tsx
+export let schema = createSchema({
+  type: 'freebie-banner',
+  title: 'Freebie Banner',
+  enabled: ({ page, group }) =>
+    page.type === 'CUSTOM' &&
+    page.handle === 'freebies/essential' &&
+    group === 'body',
+  settings: [],
+});
+```
+
+Keep the callback pure and return a boolean immediately. Errors, Promises, and invalid results make the section unavailable for new insertion, while existing instances stay editable. `enabledOn` is deprecated; move its page/group checks into `enabled`.
+
 ## Component Registration
 
 After creating a component, register it in `app/weaverse/components.ts`:
@@ -201,12 +219,12 @@ function MyComponent({ loaderData, collectionHandle, ...rest }: Props) {
 
 **Sections** are top-level components added to page layouts:
 - Appear in Studio's section picker
-- Can define `childTypes`, `enabledOn`, `limit`
+- Can define `childTypes`, `enabled`, `limit`
 - Typically have `presets` with default children
 
 **Child components** are nested inside sections:
 - Referenced by `type` in parent's `childTypes`
-- Simpler schemas, no `enabledOn` or `limit` needed
+- Simpler schemas, usually no `enabled` or `limit` needed
 - Receive data from parent context
 
 ```tsx

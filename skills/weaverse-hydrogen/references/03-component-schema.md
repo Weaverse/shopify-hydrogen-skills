@@ -1,6 +1,6 @@
 # 03 — Component Schema
 
-> `createSchema()`, settings, childTypes, presets, enabledOn, limit.
+> `createSchema()`, settings, childTypes, presets, enabled, limit.
 
 ## `createSchema()` Function
 
@@ -18,7 +18,8 @@ export let schema = createSchema({
   childTypes?: string[],   // Optional: allowed child component types
   presets?: object,        // Optional: default values when added to page
   limit?: number,          // Optional: max instances per parent/page
-  enabledOn?: {            // Optional: page/group restrictions
+  enabled?: boolean | ((context: ComponentAvailabilityContext) => boolean),
+  enabledOn?: {            // Deprecated: use enabled
     pages?: PageType[],
     groups?: string[],
   },
@@ -141,32 +142,50 @@ limit: 1,  // Only one instance allowed
 - Studio disables the "add" button when limit is reached
 - Use for components that should appear only once (announcement bars, footers)
 
-### `enabledOn` (optional)
+### `enabled` (optional)
 
-Controls which page types and layout groups can use this component:
+Controls whether a component can be inserted for the active page. Use a boolean for a static switch or a synchronous callback for page-aware rules:
 
 ```tsx
-enabledOn: {
-  pages: ['PRODUCT', 'COLLECTION'],  // Only on product and collection pages
-},
+enabled: ({ page, group }) =>
+  ['PRODUCT', 'COLLECTION'].includes(page.type) &&
+  group === 'body',
 ```
 
-**Page types:**
+The callback receives:
 
-| Value | Description |
-|-------|-------------|
-| `'*'` | All page types |
-| `'INDEX'` | Homepage |
-| `'PRODUCT'` | Product detail pages |
-| `'ALL_PRODUCTS'` | All products listing |
-| `'COLLECTION'` | Collection pages |
-| `'COLLECTION_LIST'` | Collection list pages |
-| `'PAGE'` | Custom pages |
-| `'BLOG'` | Blog listing pages |
-| `'ARTICLE'` | Individual article pages |
-| `'CUSTOM'` | Dynamic custom pages |
+```tsx
+interface ComponentAvailabilityContext {
+  page: {
+    id: string;
+    type: PageType;
+    handle: string;
+    locale: string;
+  };
+  group: 'body' | 'header' | 'footer';
+}
+```
 
-**Groups** (`header`, `footer`, `body`) — not yet available; reserved for future use.
+Callbacks must be pure and return a boolean immediately. Errors, Promises, and non-boolean results fail closed for new insertion without breaking Studio. Existing instances remain editable. Callbacks run in the storefront preview and never cross Studio RPC.
+
+Studio currently evaluates insertion for `group === 'body'`. `header` and `footer` are reserved for future placement surfaces.
+
+**Page types:** `INDEX`, `PRODUCT`, `ALL_PRODUCTS`, `COLLECTION`, `COLLECTION_LIST`, `PAGE`, `BLOG`, `ARTICLE`, `CUSTOM`.
+
+#### Migrating from `enabledOn`
+
+`enabledOn` is deprecated. Move its page and group checks into `enabled`:
+
+```tsx
+// Before
+enabledOn: { pages: ['PRODUCT'], groups: ['body'] },
+
+// After
+enabled: ({ page, group }) =>
+  page.type === 'PRODUCT' && group === 'body',
+```
+
+Existing `enabledOn` schemas remain supported. If both properties are present, both rules must pass.
 
 ## Complete Example
 
@@ -177,9 +196,8 @@ export let schema = createSchema({
   type: 'featured-collection',
   title: 'Featured Collection',
   limit: 3,
-  enabledOn: {
-    pages: ['INDEX', 'COLLECTION'],
-  },
+  enabled: ({ page, group }) =>
+    ['INDEX', 'COLLECTION'].includes(page.type) && group === 'body',
   settings: [
     {
       group: 'Content',
