@@ -14,28 +14,34 @@ Read and edit live Weaverse content (projects, pages, theme settings, languages)
 
 ## The one thing you must understand first
 
-**The Content API updates content — it does NOT create pages or projects.**
+**The Content API edits live content — and it can also create pages.**
 
-`PATCH .../pages/...` shallow-merges `data` into items **already on the page**. Item ids that don't exist are reported as `notFound` and silently skipped — never created. There is no "create page" or "create project" endpoint.
+Two write paths exist:
+
+- `PATCH .../pages/:type/*handle` shallow-merges `data` into items **on the page**. Existing ids are updated; an unknown id is **created** when its entry also supplies a `type` (the component type). `children` may be supplied to relink an item's children in the same request — each entry needs an `id` that already belongs to the page or is created in the same request.
+- `POST /projects/:projectId/pages` **creates a page** — a `CUSTOM` page (bespoke merchant page, blank root) or a resource-backed template page (`PRODUCT`/`COLLECTION`/`PAGE`/`BLOG`/`ARTICLE`, a per-resource override that clones the project's shared default template or a `basedOn` source page).
 
 So the lifecycle is:
 
 ```
-Create initial structure   →  import a project JSON into Studio   (use generating-weaverse-project-json)
-Update content afterwards   →  Content API                        (this skill)
+Create initial structure  →  import a project JSON into Studio (generating-weaverse-project-json)
+                              OR create pages one by one via POST /projects/:projectId/pages
+Update content afterwards  →  Content API (PATCH page content, incl. new typed items)
 ```
 
-If you need to build a brand-new storefront, page, or section, this is the wrong tool — generate import JSON with `generating-weaverse-project-json` and import it once. Come back here for everything after that: editing copy, swapping images, localizing, bulk edits, deletes.
+There is no "create project" endpoint — a project must already exist (from Weaverse Builder) before the API can touch it.
 
 ## When to Use
 
 - Push AI-generated or translated copy into an existing live project
 - Bulk-edit content across many pages/items
 - Read current page content/items to diff or round-trip
+- Add a new typed item to a page (via `PATCH` with a `type` on the new id) or relink `children`
+- Create a `CUSTOM` page or a resource-backed template page (`POST /projects/:projectId/pages`)
 - Delete pages in bulk
 - Upload an image/video to Shopify and reference its CDN URL in a Weaverse item
 
-Do not use it to create pages, create projects, or add new sections/blocks to a page.
+Do not use it to create *projects* — a project must already exist in Weaverse Builder.
 
 ## Authentication
 
@@ -45,29 +51,30 @@ Every endpoint except `openapi.json` needs a bearer token:
 Authorization: Bearer <WEAVERSE_API_KEY>
 ```
 
-- Get the key from **Weaverse Dashboard → Account → Content APIs**.
+- Get the key from **Weaverse Studio → Dashboard → Account/Settings → API Keys**.
 - A token is scoped to one shop. Requests for a project owned by another shop return `403 FORBIDDEN`.
 - The same token also authorizes the Shopify proxy (see "Upload resources to Shopify").
 - Store it in an env var (`WEAVERSE_API_KEY`). Never hardcode it, never pass it as a `?apiKey=` query param outside local testing — query params leak into server/CDN logs.
 
 ## Core update workflow
 
-Updating content is always **read ids first, then patch by id**. You cannot patch blindly — you must target existing item ids.
+**Read before you edit.** To change existing content you must target real item ids, so read the page first — you cannot patch blindly. New items are the one exception: they use a fresh id plus a `type`, and must fit the page tree (a `children` reference has to point at an id already on the page or created in the same request).
 
 1. **Find the project** — `GET /projects`, match by name, keep its `id`.
 2. **Pick a locale** — `GET /projects/:projectId/languages`. Keep the `isDefault: true` code (e.g. `en-us`). You need it for the next steps.
 3. **Read the page** — `GET /projects/:projectId/pages/:type/*handle?locale=<code>`. **Always pass `locale`.** With no `locale` the resolver only tries the empty locale and the legacy default `en-us`, so a market-first project or any project whose default locale isn't `en-us` returns `PAGE_NOT_FOUND` even though the page exists. The default `weaverse` format already returns **every item with its `id`** — that id is exactly what the patch needs, so **`?meta=true` is not required** (it only matters for `portable-text` reads).
-4. **Build the patch** — for each item you want to change, send only the fields that change inside `data` (it shallow-merges, so untouched fields stay). Include the **same `locale`** you read with:
+4. **Build the patch** — for each item you want to change, send only the fields that change inside `data` (it shallow-merges, so untouched fields stay). To **create** a new item, give it a fresh `id` and supply its `type` (component type). To **relink children**, add `children` with the child ids (each must already belong to the page or be created in the same request). Include the **same `locale`** you read with:
    ```json
    {
      "locale": "en-us",
      "items": [
-       { "id": "itm1", "data": { "heading": "New heading" } }
+       { "id": "itm1", "data": { "heading": "New heading" } },
+       { "id": "itm-new", "type": "Hero", "data": { "heading": "Fresh section" }, "children": [{ "id": "itm1" }] }
      ]
    }
    ```
 5. **Patch** — `PATCH /projects/:projectId/pages/:type/*handle` (use `POST` if your client/proxy can't send a `PATCH` body). The page is resolved with the **same locale rules as the read** — a missing/wrong `locale` can hit `PAGE_NOT_FOUND` or patch the wrong locale's page. Max **100 items per request** — chunk larger edits.
-6. **Check the response** — `{ object: "page_update", updated, notFound, updatedIds, notFoundIds }`. A non-empty `notFoundIds` means those ids aren't on the resolved page (wrong page, wrong locale, or stale ids) — re-read the page with the right `locale`, don't retry the same ids.
+6. **Check the response** — `{ object: "page_update", updated, notFound, updatedIds, notFoundIds }`. A non-empty `notFoundIds` means those ids couldn't be resolved on the page (wrong page, wrong locale, stale ids, or a new id sent **without** a `type`) — re-read the page with the right `locale`, don't retry the same ids.
 
 A successful patch invalidates caches and goes live through `api.weaverse.io` — the same path a Studio save takes.
 
@@ -131,10 +138,11 @@ Use it to inspect a project quickly and to apply patch files. For anything the s
 
 ## Red Flags
 
-- **Trying to create a page/project/section via the API** — it can't. Use `generating-weaverse-project-json` + import for new structure.
-- **Patching without reading ids first** — you must target existing item ids. Read the page first (with the right `locale`); the default `weaverse` read already includes every item `id`, so you do **not** need `?meta=true`.
+- **Trying to create a *project* via the API** — there is no create-project endpoint. Projects are created in Weaverse Builder; the API edits them.
+- **Sending a new item id without a `type` in a PATCH** — unknown ids are created only when `type` is supplied; otherwise they land in `notFoundIds`. For `children` entries, each id must already be on the page or be created in the same request.
+- **Patching an existing item without reading its id first** — you must target a real item id. Read the page first (with the right `locale`); the default `weaverse` read already includes every item `id`, so you do **not** need `?meta=true`. (Creating a *new* item is different: fresh id + `type`.)
 - **Omitting `locale` on a page read/update** — with no `locale` the resolver only tries the empty locale and legacy `en-us`, so non-`en-us` or market-first projects return `PAGE_NOT_FOUND` even when the page exists. Always pass a real `locale` from List languages.
-- **"My published edit is missing from the API" — silent wrong-locale page (not a 404).** Content is stored per locale (`PageAssignment` keyed by `projectId, locale, type, handle`). When a merchant edits/publishes with a market locale selected (e.g. `en-us`), the change saves to the `en-us` assignment, **not** the base locale `""`. Because `locale` defaults to `""`, a request like `…/pages/PRODUCT/default` (no `?locale`) can **succeed (200)** but return the base-locale assignment — a *different, often empty/stale* page — so the edit looks "missing" even though it published fine. This is distinct from `PAGE_NOT_FOUND`: the request works, it just returns the wrong locale's page. Fix: always pass `?locale=<market>` (e.g. `en-us`). To find which locale a product/page uses: Studio top-bar template dropdown (shows active template + "Assigned to N products") with the market/locale selector beside it; or `GET /pages` (locale per row); or read `data-weaverse-template-id` from the live storefront HTML. Verified live (PwC/Westside, project `lzum53gvsbhehjr3in906myu`): edit lived on `locale=en-us` (active, freshly published), base `locale=""` was the stale one the no-locale call returned.
+- **"My published edit is missing from the API" — silent wrong-locale page (not a 404).** Content is stored per locale (`PageAssignment` keyed by `projectId, locale, type, handle`). When a merchant edits/publishes with a market locale selected (e.g. `en-us`), the change saves to the `en-us` assignment, **not** the base locale `""`. Because `locale` defaults to `""`, a request like `…/pages/PRODUCT/default` (no `?locale`) can **succeed (200)** but return the base-locale assignment — a *different, often empty/stale* page — so the edit looks "missing" even though it published fine. This is distinct from `PAGE_NOT_FOUND`: the request works, it just returns the wrong locale's page. Fix: always pass `?locale=<market>` (e.g. `en-us`). To find which locale a product/page uses: Studio top-bar template dropdown (shows active template + "Assigned to N products") with the market/locale selector beside it; or `GET /pages` (locale per row); or read `data-weaverse-template-id` from the live storefront HTML. Verified live on a market-first project: the edit lived on `locale=en-us` (active, freshly published) while base `locale=""` was the stale page the no-locale call returned.
 - **Echoing back `locale: null`** — list-pages rows can be `null` for market-first projects. Don't send `null`; pass a real code and let resolution map it to the market.
 - **Adding `?meta=true` for normal edits** — it only affects `portable-text` reads (where it restores `_weaverse.id`). On a `weaverse`-format read it changes nothing.
 - **Ignoring `notFoundIds` in the response** — it means your ids aren't on the resolved page (wrong page, wrong locale, or stale ids). Re-read with the right locale, don't retry.

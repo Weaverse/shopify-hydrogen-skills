@@ -45,7 +45,7 @@ figma-to-weaverse             ┘                                    └─→  
                                                                          bulk edits, Shopify resource upload)
 ```
 
-Initial structure is created by importing the generated JSON. Everything after — copy, images, localization, bulk edits — goes through the Content API, which updates existing items but cannot create new ones.
+Initial structure is created by importing the generated JSON (or page-by-page via `POST /projects/:projectId/pages`). Everything after — copy, images, localization, bulk edits — goes through the Content API, which updates existing items, adds new typed items, relinks children, and creates/deletes pages.
 
 ---
 

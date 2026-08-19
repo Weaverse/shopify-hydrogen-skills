@@ -1,6 +1,6 @@
 ---
 name: setup-weaverse-project
-description: "Set up, create, scaffold, or clone a new Weaverse Hydrogen storefront locally from a Weaverse theme. Use CLI-first setup, boot a live demo-store preview before asking for Shopify credentials, then make it the merchant's own with env, GitHub, and Builder preview connection."
+description: "Set up a new Weaverse Hydrogen storefront locally from a Weaverse theme. Boot a live demo-store preview before asking for any credentials, then make it the merchant's own: install the Hydrogen app, link the store, pull the Storefront credentials, push the repo to GitHub, configure the Weaverse MCP for live page edits, and install the full shopify-hydrogen-skills pack."
 ---
 
 # Set Up a Weaverse Project — Agent Skill
@@ -16,9 +16,11 @@ Most users quit onboarding because they hit a wall (GitHub, Shopify tokens, CLI)
 
 Do not make the user create a GitHub repo, link a Shopify store, or paste tokens before they have seen the storefront running. If you do, you have failed the onboarding even if every command succeeds.
 
-## You Drive the CLI — The User Never Types It
+## You Drive the CLI — The User Only Clicks Browser Flows
 
 The user (merchant or developer) should never have to type a CLI command. **You** run `shopify hydrogen` and `@weaverse/cli` under the hood. The Shopify CLI does real work (env pull, dev server, codegen, deploy) — drive it, do not reimplement it. `npm run dev` itself shells out to `shopify hydrogen dev`, so the CLI is always involved; just keep it invisible to the user.
+
+The human's job is limited to: approving browser flows, selecting the store in the shop picker, copying credentials, and supplying secrets. Never make them paste commands.
 
 ## Inputs You Need
 
@@ -62,7 +64,7 @@ npx @weaverse/cli@latest create --help 2>/dev/null        # CLI availability + t
 ls package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null # infer package manager
 ```
 
-Branch all later steps off this. If `gh` is missing or not authed, use the manual repo fallback in Phase 5. If Node < 18, stop and tell the user to upgrade.
+Branch all later steps off this. If `gh` is missing or not authed, use the manual repo fallback in Phase 6. If Node < 18, stop and tell the user to upgrade.
 
 ---
 
@@ -134,72 +136,97 @@ Now swap the demo store for the user's store. The **minimum vars needed to rende
 
 `SESSION_SECRET` is still required by Hydrogen, but it is agent-generated. Everything else (`SHOP_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `PUBLIC_CHECKOUT_DOMAIN`, `PUBLIC_STOREFRONT_ID`, analytics, reviews) is **feature-complete extra** — set it *after* first success, never block on it.
 
-### Decision tree: Shopify plan vs development store
+### One path: install the Hydrogen app and link the storefront
 
-Start by asking or inferring which path applies:
+Hydrogen works on Shopify development stores. There is no Headless-app fallback: local linking and credential setup go through the **Hydrogen app** regardless of plan.
 
-- **Store is on a Shopify plan / can use Oxygen later** → guide the user to install the **Hydrogen sales channel** (https://apps.shopify.com/hydrogen), then create one Hydrogen storefront project inside that channel.
-- **Development store / not on a Shopify plan** → guide the user to install the **Headless sales channel** (https://apps.shopify.com/headless), then copy the Storefront API values manually.
+1. Have the user install the **Hydrogen app**: [https://apps.shopify.com/hydrogen](https://apps.shopify.com/hydrogen). They may need to pick the store, approve the install, and create a Hydrogen storefront project in the app.
+2. **Link the storefront** (you run this):
+   ```bash
+   npx shopify hydrogen link
+   ```
+   If a shop picker appears, ask the user for the exact `.myshopify.com` domain to select — do not guess from a list of shops.
+3. **Pull the environment** (you run this):
+   ```bash
+   npx shopify hydrogen env pull
+   ```
+   This populates `.env` with the store's real variables. Preserve `WEAVERSE_PROJECT_ID` and the generated `SESSION_SECRET` if the pull overwrites them.
+4. **Verify before swapping** — never replace demo credentials with unverified ones. Check that `.env` now contains real values, not placeholders:
+   ```bash
+   grep -E "^(PUBLIC_STORE_DOMAIN|PUBLIC_STOREFRONT_API_TOKEN)=" .env
+   ```
+   `PUBLIC_STORE_DOMAIN` must be the store's actual `<store>.myshopify.com` domain and `PUBLIC_STOREFRONT_API_TOKEN` a non-empty Storefront API token. Only then swap (the pull already did); re-run the Phase 2 verify:
+   ```bash
+   curl -sf -o /dev/null -w "%{http_code}" http://localhost:3456   # expect 200
+   ```
 
-### Path A — Hydrogen sales channel (preferred for plan stores)
+> **Real limitation, stated once:** public Oxygen / shareable *production* environments still depend on the store's Shopify plan. Local linking and credential setup do **not** — they work on development stores through the Hydrogen app.
+> Environment docs: [https://shopify.dev/docs/storefronts/headless/hydrogen/environments](https://shopify.dev/docs/storefronts/headless/hydrogen/environments)
+> Getting started: [https://shopify.dev/docs/storefronts/headless/hydrogen/getting-started](https://shopify.dev/docs/storefronts/headless/hydrogen/getting-started)
 
-After the user installs the Hydrogen sales channel and creates a Hydrogen storefront project, try the Shopify CLI first:
-
-```bash
-npx shopify hydrogen env pull   # works ONLY if the storefront is already linked
-```
-
-- **Linked** → `env pull` populates `.env`. Preserve the existing `WEAVERSE_PROJECT_ID` and generated `SESSION_SECRET` if the pull overwrites them.
-- **Shop picker appears** → ask the user for the exact `.myshopify.com` domain to select. Do not guess from a list of shops.
-- **Not linked / env pull unavailable** → have the user copy variables from **Shopify Admin → Hydrogen sales channel → Storefront Settings → Environments and variables**. You write the minimum render vars into `.env`.
-
-### Path B — Headless sales channel (development/no-plan stores)
-
-For development stores or stores without a Shopify plan, the Hydrogen sales channel may not be available. Guide the user to install the **Headless sales channel** (https://apps.shopify.com/headless), create/copy Storefront API credentials, and give you only the values you cannot generate:
-
-- `PUBLIC_STORE_DOMAIN`
-- `PUBLIC_STOREFRONT_API_TOKEN`
-- optional: `PRIVATE_STOREFRONT_API_TOKEN`
-
-You write them into `.env`. Re-run the Phase 2 verify after swapping.
-
-Docs: https://weaverse.io/docs/intro/quickstart and https://shopify.dev/docs/storefronts/headless
+If `env pull` is unavailable or fails, have the user copy variables from **Shopify Admin → Hydrogen app → Storefront settings → Environments and variables**; you write the minimum render vars into `.env` and verify as above.
 
 ---
 
-## Phase 4 — Project Identity (`WEAVERSE_PROJECT_ID` + API key)
+## Phase 4 — Project Identity (`WEAVERSE_PROJECT_ID`)
 
 `WEAVERSE_PROJECT_ID` is the one value that lives only in Weaverse Builder and cannot be derived from Shopify.
 
-**Path A — available today (default):**
-The setup prompt generated by Weaverse Builder embeds the project's `WEAVERSE_PROJECT_ID` (and theme name). Read it from the prompt you were given and write it into `.env`. If you were not given one, ask the user to copy it from Builder → Project Settings.
-
-**Path B — local auth handshake (milestone, may not be live yet):**
-When available, you can run a local authentication handshake that returns the user's `WEAVERSE_PROJECT_ID`, `WEAVERSE_API_KEY`, and the ability to register a preview URL and use the Content API directly. If the handshake tooling is present, prefer it. If not, fall back to Path A. **Do not assume `WEAVERSE_API_KEY` exists** unless the handshake provided it. Once you have the key, you can also give the agent the Weaverse MCP (Phase 8).
+The setup prompt generated by Weaverse Builder embeds the project's `WEAVERSE_PROJECT_ID` (and theme name). Read it from the prompt you were given and write it into `.env`. If you were not given one, ask the user to copy it from [Weaverse Studio](https://studio.weaverse.io) → Project Settings.
 
 ---
 
-## Phase 5 — Create the User's Repo and Push
+## Phase 5 — Weaverse API token + MCP (chat-driven live editing)
 
-**Default (if `gh` present and authed from Phase 0):**
+The Weaverse MCP lets the agent read and edit *this* project (and other projects on the same shop) directly from chat — including live page/content writes through the mounted Content API.
+
+1. **Create the token (human action).** The user creates a **Weaverse API token** in Weaverse Studio → Dashboard → Account/Settings → API Keys ([https://studio.weaverse.io](https://studio.weaverse.io)). Copy it into your environment as `WEAVERSE_API_KEY` — never into a tracked file, never into the prompt.
+2. **Configure the MCP server.** Add `@weaverse/mcp@latest` to the agent's MCP config with the bearer env var exactly:
+   ```env
+   WEAVERSE_API_KEY=<token>
+   ```
+   The config shape differs per client (Cursor, Claude Code, Codex, opencode, VS Code, pi, …); exact per-client snippets are in the docs: [https://weaverse.io/docs/developer-tools/weaverse-mcp](https://weaverse.io/docs/developer-tools/weaverse-mcp)
+3. **Verify reads.** Use the real read tools: `list_projects`, `get_project`, `list_pages`, `get_page`, `get_theme_settings`, `list_languages`, `get_openapi_spec`. There is no `whoami` tool.
+4. **Live writes are default-off — turn them on only with consent.** All six write tools require the env var exactly:
+   ```env
+   WEAVERSE_ENABLE_LIVE_WRITES=true
+   ```
+   With it: `update_project`, `create_page`, `delete_pages`, `update_page`, `assign_template_resources`, `update_theme_settings`.
+   **Before enabling, disclose in plain language:** with live writes enabled, these tools change **live storefront content** — `update_page` edits real page items, `create_page`/`delete_pages` create/delete real pages, `assign_template_resources` adds Shopify resources to ONE existing shared template page (it never repoints an assignment away from another page; if any handle already belongs to a different live page the whole batch is rejected with 409 and nothing is written), `update_theme_settings` changes theme settings, `update_project` renames the project. Writes go live **immediately** through the same cache-invalidation path as a Studio save — there is no separate publish step. After any write, read back the affected resource to confirm.
+
+This is a convenience for *future* work — not required to finish setup. Skip it if the user isn't on an MCP-capable agent.
+
+---
+
+## Phase 6 — Create the User's Repo and Push (ask first)
+
+Pushing creates a repository under the user's GitHub account and publishes their code — an external effect they must approve. Never block local setup on it: if approval doesn't come, the storefront is already working locally and setup can still be reported complete.
+
+**Always ask before any `gh repo create`, `git commit`, or `git push`** — including when `gh` is already authenticated. Detected `gh` state only decides *how* to execute after approval; it is never itself the approval. Ask for and echo back:
+
+- the exact repository name (default `<project-folder>`),
+- the visibility (**private** unless the user says otherwise),
+- confirmation to make the first push.
+
+**After approval, if `gh` is present and authed (Phase 0):**
 
 ```bash
 git add -A
 git commit -m "Initial commit: Weaverse Hydrogen storefront"
-gh repo create <project-folder> --private --source=. --remote=origin --push
+gh repo create <approved-name> --private --source=. --remote=origin --push
 ```
 
 If the repo name already exists, inspect it before acting:
 
 ```bash
-gh repo view <owner>/<project-folder> --json isEmpty,sshUrl,url
+gh repo view <owner>/<approved-name> --json isEmpty,sshUrl,url
 ```
 
 - **Empty repo** → add it as `origin` and push.
-- **Not empty** → do not overwrite or force-push. Create a distinct repo name such as `<project-folder>-pilot` or `<project-folder>-weaverse`.
+- **Not empty** → do not overwrite or force-push. Propose a distinct name such as `<project-folder>-pilot` or `<project-folder>-weaverse` and get approval for that name before continuing.
 
-**Fallback (no `gh`):** give numbered manual steps —
-1. Create a new empty repo at https://github.com/new (no README).
+**After approval, if `gh` is missing / not authed:** give the user a clickable path and ask them to enable the push:
+1. Authenticate the GitHub CLI ([https://github.com/login](https://github.com/login)) or create a new empty repo at [https://github.com/new](https://github.com/new) (no README).
 2. Then run (you fill in their URL):
    ```bash
    git add -A && git commit -m "Initial commit: Weaverse Hydrogen storefront"
@@ -207,18 +234,21 @@ gh repo view <owner>/<project-folder> --json isEmpty,sshUrl,url
    git branch -M main && git push -u origin main
    ```
 
-Never present "agent does it" and "user does it" as the same step — pick the default from Phase 0 detection, state which path you're taking.
+**If the user declines or doesn't answer:** say so plainly, leave the work committed only locally (or uncommitted), and continue. Do not retry the push unprompted.
+
+**Never commit `.env` or secrets.** Confirm `.gitignore` covers `.env*` (the scaffold ships one) and that no token ends up in the commit. If a secret was staged, unstage it and add it to `.gitignore` before committing.
+
+Never present "agent does it" and "user does it" as the same step — after approval, pick the path from Phase 0 detection and state which one you're taking.
 
 ---
 
-## Phase 6 — Connect the Preview to Weaverse Builder
+## Phase 7 — Connect the Preview to Weaverse Builder
 
-- **Today:** guide the user — in Builder, click the URL in the preview address bar and choose **Manage previews** (or Builder → **Project Settings** → **Manage URLs**, Preview URLs section) → add `http://localhost:3456` → save.
-- **Milestone (Path B auth):** when the handshake/API is live, register the preview URL automatically via the authenticated endpoint so the user never leaves the agent. Prefer this when available.
+Guide the user: in Builder, click the URL in the preview address bar and choose **Manage previews** (or Builder → **Project Settings** → **Manage URLs**, Preview URLs section) → add `http://localhost:3456` → save.
 
 ---
 
-## Phase 7 — Verify (the success oracle)
+## Phase 8 — Verify (the success oracle)
 
 **Do not claim setup success without these green checks:**
 
@@ -237,27 +267,28 @@ Plus confirm the Weaverse preview shows **connected** in Builder when the user c
 
 ---
 
-## Phase 8 — (Optional) Give the agent the Weaverse MCP
+## Phase 9 — Install the full skills pack (finish line)
 
-Once the project has a `WEAVERSE_API_KEY` (the Phase 4 Path B handshake, or a Content API
-key from Builder → Settings → API Keys), offer to add the **Weaverse MCP server** so the
-agent can work with *this* project directly — search the Weaverse docs, read the
-account's projects, pages (as Portable Text), theme settings, and locales, and edit
-page content, theme settings, and project names.
+End by installing the complete `shopify-hydrogen-skills` pack — all skills, all agents, noninteractive — **inside the generated storefront project** (not anywhere else). The setup request explicitly asks for this, so the install itself is expected:
 
-- Ships as `npx -y @weaverse/mcp` over stdio. **Account tools need v2.2.0+**; docs search
-  works with no key.
-- Once `WEAVERSE_API_KEY` is set, the account tools can **read and write**: update page
-  content (`update_page`), delete pages (`delete_pages`), merge theme settings
-  (`update_theme_settings`), and rename projects (`update_project`). Writes go live on the
-  storefront immediately — read current values first and send only the keys you change.
-- Put `WEAVERSE_API_KEY` in the MCP client's `env` block — never in a tracked file.
-- The config shape differs per client (Cursor, Claude Code, Codex, opencode, VS Code, pi, …);
-  exact per-client snippets are in the docs:
-  **https://weaverse.io/docs/developer-tools/weaverse-mcp**
+```bash
+npx skills@latest add Weaverse/shopify-hydrogen-skills --all
+```
 
-This is a convenience for *future* work — not required to finish setup. Skip it if the user
-isn't on an MCP-capable agent.
+Then inspect what it generated:
+
+```bash
+git status --short          # review what the pack install generated
+```
+
+**Publishing those changes is a separate external effect — ask again.** Show the user the file list from `git status` and what the commit message would be, then wait for approval before running anything below:
+
+```bash
+git add -A && git commit -m "Add shopify-hydrogen-skills pack"
+git push
+```
+
+If the user declines, leave the installed pack in the working tree and say it is uncommitted. Never run this commit/push block unconditionally.
 
 ---
 
@@ -267,18 +298,20 @@ isn't on an MCP-capable agent.
 2. Scaffold with `npx @weaverse/cli@latest create` (default `pilot`) → `git init`.
 3. Generate `SESSION_SECRET` if needed.
 4. **Boot on demo Shopify store** (install, `npm run dev`, verify 200). ← wow moment.
-5. Swap to user's store (Shopify plan → Hydrogen sales channel + `env pull` or manual variables; development/no-plan → Headless sales channel + manual variables).
-6. Create repo + push (`gh repo create` default, manual fallback).
-7. Connect preview URL (manual paste today / auto-register later).
-8. Verify required checks (200 + typecheck) and run build when preparing handoff/production.
-9. *(Optional)* Wire up the Weaverse MCP for the user's agent (`npx -y @weaverse/mcp` + `WEAVERSE_API_KEY`) — see Phase 8.
+5. Swap to user's store: install the Hydrogen app → `npx shopify hydrogen link` → `npx shopify hydrogen env pull` → verify `PUBLIC_STORE_DOMAIN` + `PUBLIC_STOREFRONT_API_TOKEN` are real before trusting them.
+6. **Ask approval** for repo name/visibility/first push, then create repo + push (`gh repo create` after approval, manual fallback). Never commit `.env`/secrets.
+7. Configure the Weaverse MCP (`WEAVERSE_API_KEY`; live writes only with consent via `WEAVERSE_ENABLE_LIVE_WRITES=true`).
+8. Connect preview URL in Builder (Manage previews).
+9. Verify required checks (200 + typecheck); run build when preparing handoff/production.
+10. Install the full pack: `npx skills@latest add Weaverse/shopify-hydrogen-skills --all`; review `git status`, then **ask approval** before committing/pushing it.
 
 ## Required vars quick reference
 
 | Var | Needed to render? | Source |
 |-----|-------------------|--------|
 | `SESSION_SECRET` | yes | agent-generated random string |
-| `PUBLIC_STORE_DOMAIN` | yes | Shopify (Hydrogen or Headless sales channel) |
-| `PUBLIC_STOREFRONT_API_TOKEN` | yes | Shopify (Hydrogen or Headless sales channel) |
-| `WEAVERSE_PROJECT_ID` | yes | Weaverse Builder (prompt / handshake) |
+| `PUBLIC_STORE_DOMAIN` | yes | Shopify Hydrogen app (`env pull`) |
+| `PUBLIC_STOREFRONT_API_TOKEN` | yes | Shopify Hydrogen app (`env pull`) |
+| `WEAVERSE_PROJECT_ID` | yes | Weaverse Builder (setup prompt) |
+| `WEAVERSE_API_KEY` | MCP only | Weaverse Studio → Dashboard → Account/Settings → API Keys |
 | `SHOP_ID`, customer-account, checkout, storefront-id, analytics | no (feature-complete) | Shopify / later |

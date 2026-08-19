@@ -17,6 +17,7 @@ Every success carries an `object` field:
 | `page`           | single page read                             |
 | `theme_settings` | theme settings read                          |
 | `page_update`    | page content update                          |
+| `page_create`    | page creation                                |
 | `page_delete`    | bulk page delete                             |
 | `error`          | any failure                                  |
 
@@ -33,6 +34,7 @@ Every success carries an `object` field:
 | `PROJECT_NOT_FOUND` | 404    | Project missing or deleted                       |
 | `PAGE_NOT_FOUND`    | 404    | Page could not be resolved                       |
 | `INVALID_PARAMS`    | 400    | Bad query param, body, or cursor (405 on method) |
+| `CONFLICT`          | 409    | Live page/assignment already exists for this handle/type/locale |
 | `INTERNAL_ERROR`    | 500    | Unexpected server error                          |
 
 ## Pagination
@@ -121,7 +123,7 @@ GET /projects/:projectId/pages/:type/*handle?locale=&format=&meta=
 ```
 PATCH /projects/:projectId/pages/:type/*handle      (POST also accepted)
 ```
-Shallow-merges `data` into items **already on the page**. Unknown ids → `notFound`, never created. Max **100 items** per request. Goes live via `api.weaverse.io`. The page is resolved with the **same locale rules as Get a page** — send the matching `locale` in the body, or the update may hit `PAGE_NOT_FOUND` (or the wrong locale's page) for market-first / non-`en-us` projects.
+Shallow-merges `data` into items on the page. Existing ids are updated; an unknown id is **created** when its entry supplies a `type` (component type). `children` optionally relinks an item's children — each entry needs an `id` that already belongs to the page or is created in the same request. Max **100 items** per request. Goes live via `api.weaverse.io`. The page is resolved with the **same locale rules as Get a page** — send the matching `locale` in the body, or the update may hit `PAGE_NOT_FOUND` (or the wrong locale's page) for market-first / non-`en-us` projects.
 
 Body:
 ```json
@@ -133,6 +135,23 @@ Response:
 { "object": "page_update", "updated": 1, "notFound": 0,
   "updatedIds": ["itm1"], "notFoundIds": [] }
 ```
+
+### Create a page
+```
+POST /projects/:projectId/pages
+```
+Creates one page per call. `type` is `CUSTOM` (bespoke merchant page, blank root) or a resource-backed template type (`PRODUCT`/`COLLECTION`/`PAGE`/`BLOG`/`ARTICLE` — a per-resource override that clones the project's shared default template for that type, or the `basedOn` source page when given). For `CUSTOM`, slashes in `handle` are normalized; for resource-backed types `handle` is the exact Shopify resource handle. `shopifyResourceId` (gid) is persisted only for resource-backed types. To share one template page across many resources without copying, use `POST /template-assignments/:pageId` instead.
+
+Body — optional fields (`name`, `locale`, `basedOn`, `shopifyResourceId`) are
+strings when present; **omit** them rather than sending `null`:
+```json
+{ "type": "CUSTOM", "handle": "about", "name": "About" }
+```
+Response:
+```json
+{ "object": "page_create", "page": { "id": "pg9", "type": "CUSTOM", "handle": "about" } }
+```
+A live assignment already existing for this handle/type/locale returns `409 CONFLICT`.
 
 ### Bulk-delete pages
 ```
