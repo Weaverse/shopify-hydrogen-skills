@@ -32,6 +32,7 @@ For manual per-agent setup, see [INSTALL.md](INSTALL.md).
 | [`generating-weaverse-project-json`](./skills/generating-weaverse-project-json/SKILL.md) | Generate import-ready Weaverse project export JSON from section plans, specs, or existing exports | Building Weaverse import files |
 | [`weaverse-content-api`](./skills/weaverse-content-api/SKILL.md) | Read/update live Weaverse content over the REST Content API — bulk edits, AI content pipelines, Shopify resource upload | Updating a project after it exists |
 | [`hydrogen-analytics-tracking`](./skills/hydrogen-analytics-tracking/SKILL.md) | End-to-end tracking on Hydrogen — GTM, GA4 (browser + Measurement Protocol), Meta Pixel + CAPI, Google Ads, Consent Mode v2, CSP, Oxygen FPC, Weaverse webhook forwarding | Implementing analytics/conversion tracking on a Hydrogen storefront |
+| [`hydrogen-markets-localization`](./skills/hydrogen-markets-localization/SKILL.md) | End-to-end Shopify Markets localization — canonical market config, locale routing, Weaverse translations, RTL, cart/account/checkout continuity, SEO, and production readback | Adding or reviewing markets, locales, translations, hreflang, or localized commerce flows |
 
 ### Weaverse build pipeline
 
@@ -125,11 +126,15 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │   ├── references/
 │   │   └── scripts/
 │
-│   └── weaverse-content-api/         # Live content read/update over REST
+│   ├── weaverse-content-api/         # Live content read/update over REST
+│   │   ├── SKILL.md
+│   │   ├── references/              # Endpoints + Portable Text
+│   │   └── scripts/
+│   │       └── weaverse_content_api.mjs
+│   │
+│   └── hydrogen-markets-localization/ # Markets and localization workflow
 │       ├── SKILL.md
-│       ├── references/              # Endpoints + Portable Text
-│       └── scripts/
-│           └── weaverse_content_api.mjs
+│       └── references/              # Verification checklist
 │
 ├── scripts/                       # Live doc fetching (shared)
 │   ├── search_shopify_docs.mjs

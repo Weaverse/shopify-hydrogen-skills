@@ -60,6 +60,9 @@ skills/
     SKILL.md
     references/
     scripts/
+  hydrogen-markets-localization/    # End-to-end markets/localization workflow
+    SKILL.md
+    references/                    # Verification checklist
 ```
 
 ## Live Docs Strategy
@@ -94,6 +97,7 @@ All scripts use Node.js built-ins only (no dependencies needed). Require Node.js
 | `figma-to-weaverse/` | Authored in this repo · Figma MCP extraction; reuses cloning skill's matching rules |
 | `generating-weaverse-project-json/` | Authored in this repo with import schema references and validator |
 | `weaverse-content-api/` | Authored in this repo from builder `docs/content-api.md` · Live: `/openapi.json` |
+| `hydrogen-markets-localization/` | Authored in this repo from verified Hydrogen + Weaverse implementation evidence · Cross-check platform APIs with live Shopify/Weaverse docs |
 
 **Rule:** Never write API docs from memory or training data. Use the scripts to fetch authoritative content.
 

@@ -106,6 +106,7 @@ cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ~/.claude/skills/
 cp -r /tmp/h-skills/skills/figma-to-weaverse    ~/.claude/skills/
 cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ~/.claude/skills/
 cp -r /tmp/h-skills/skills/weaverse-content-api  ~/.claude/skills/
+cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ~/.claude/skills/
 cp -r /tmp/h-skills/scripts                    ~/.claude/skills/
 
 # Local
@@ -119,6 +120,7 @@ cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ./skills/
 cp -r /tmp/h-skills/skills/figma-to-weaverse    ./skills/
 cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ./skills/
 cp -r /tmp/h-skills/skills/weaverse-content-api  ./skills/
+cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ./skills/
 cp -r /tmp/h-skills/scripts                    ./skills/
 ```
 
@@ -145,6 +147,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/figma-to-weaverse/SKILL.md
 - {SKILLS_DESTINATION}/generating-weaverse-project-json/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
+- {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
 For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
 - `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
@@ -192,6 +195,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/figma-to-weaverse/SKILL.md
 - {SKILLS_DESTINATION}/generating-weaverse-project-json/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
+- {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
 For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
 - `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
@@ -228,6 +232,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, refer to:
 - ./skills/weaverse-integration/SKILL.md
 - ./skills/cloning-websites-to-weaverse/SKILL.md
 - ./skills/generating-weaverse-project-json/SKILL.md
+- ./skills/hydrogen-markets-localization/SKILL.md
 
 For live docs, use the scripts in ./skills/scripts/:
 - `node ./skills/scripts/search_shopify_docs.mjs "<query>"`
@@ -270,6 +275,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/figma-to-weaverse/SKILL.md
 - {SKILLS_DESTINATION}/generating-weaverse-project-json/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
+- {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
 For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
 - `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
@@ -312,6 +318,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/figma-to-weaverse/SKILL.md
 - {SKILLS_DESTINATION}/generating-weaverse-project-json/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
+- {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
 For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
 - `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
@@ -340,6 +347,7 @@ cp -r /tmp/h-skills/skills/theme-update        ~/.openclaw/workspace/skills/
 cp -r /tmp/h-skills/skills/weaverse-integration  ~/.openclaw/workspace/skills/
 cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ~/.openclaw/workspace/skills/
 cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ~/.openclaw/workspace/skills/
+cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ~/.openclaw/workspace/skills/
 cp -r /tmp/h-skills/scripts                    ~/.openclaw/workspace/skills/
 
 # Local — same as Claude Code local above
@@ -392,6 +400,7 @@ Skills copied to:
   ├── weaverse-hydrogen/
   ├── theme-update/
   ├── weaverse-integration/
+  ├── hydrogen-markets-localization/
   └── scripts/
       ├── search_shopify_docs.mjs
       ├── search_weaverse_docs.mjs

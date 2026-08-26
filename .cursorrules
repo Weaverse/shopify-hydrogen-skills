@@ -37,6 +37,7 @@ Use these when you need the latest API references, not the offline references.
 | [generating-weaverse-project-json](./skills/generating-weaverse-project-json/SKILL.md) | Weaverse project export JSON generation | Building import-ready Weaverse project files |
 | [weaverse-content-api](./skills/weaverse-content-api/SKILL.md) | Read/update live Weaverse content over REST — bulk edits, AI pipelines, Shopify upload | Updating a project after it exists |
 | [hydrogen-analytics-tracking](./skills/hydrogen-analytics-tracking/SKILL.md) | End-to-end analytics & conversion tracking — GTM, GA4 (browser + Measurement Protocol), Meta Pixel + CAPI, consent mode, CSP, Oxygen full-page cache, and A/B **experiment-exposure** tracking | Wiring analytics, pixels, server-side conversions, or A/B experiment tracking |
+| [hydrogen-markets-localization](./skills/hydrogen-markets-localization/SKILL.md) | End-to-end Shopify Markets localization — canonical config, routing, Weaverse translations, RTL, commerce continuity, SEO, and production readback | Adding or reviewing markets, locales, translations, hreflang, or localized commerce flows |
 
 ## When to Load Which Skill
 
@@ -51,6 +52,7 @@ Use these when you need the latest API references, not the offline references.
 - **Generating Weaverse import JSON** → load `generating-weaverse-project-json`
 - **Updating live Weaverse content via API / Shopify resource upload** → load `weaverse-content-api`
 - **Wiring analytics / pixels / server-side conversions / A/B experiment-exposure tracking** → load `hydrogen-analytics-tracking`
+- **Adding/reviewing markets, locale routes, translations, hreflang, RTL, or localized commerce** → load `hydrogen-markets-localization`
 
 ## About Shopify Hydrogen
 

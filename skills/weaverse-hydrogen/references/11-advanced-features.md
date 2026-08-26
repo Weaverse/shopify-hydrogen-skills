@@ -81,45 +81,17 @@ export let schema = createSchema({
 
 ## Localization (i18n)
 
-Weaverse supports multi-locale storefronts via Shopify Markets.
+Weaverse page loading consumes the active public locale, but it is only one
+boundary in a Shopify Markets implementation. Use the
+[`hydrogen-markets-localization`](../../hydrogen-markets-localization/SKILL.md)
+skill to trace routing, Hydrogen and Weaverse context, cart, accounts, SEO,
+translations, and production readback as one contract.
 
-### Locale in loadPage()
-
-```tsx
-// Route loader
-export async function loader({ context, params }: LoaderFunctionArgs) {
-  let locale = params.locale ? `${params.locale.toLowerCase()}` : 'en-us';
-
-  let weaverseData = await context.weaverse.loadPage({
-    type: 'PRODUCT',
-    handle: params.handle,
-    locale,  // e.g., 'sv-se', 'fr-ca'
-  });
-
-  return { weaverseData };
-}
-```
-
-### Locale Format
-
-- Format: `language-country` (lowercase, hyphen-separated)
-- Language: ISO 639-1 (2 letters) — `en`, `fr`, `de`, `sv`
-- Country: ISO 3166-1 alpha-2 (2 letters) — `us`, `ca`, `de`, `se`
-- Examples: `en-us`, `fr-ca`, `sv-se`, `de-de`
-
-### Fallback Behavior
-
-If the specified locale doesn't have content configured in Weaverse Studio, it falls back to `en-us` (default locale).
-
-### Route Structure
-
-```
-app/routes/
-├── ($locale)._index.tsx              # Homepage
-├── ($locale).products.$handle.tsx     # Product page
-├── ($locale).collections.$handle.tsx  # Collection page
-└── ($locale).pages.$handle.tsx        # Custom page
-```
+Do not infer support from a `language-country`-shaped URL or assume a fixed
+fallback locale. Resolve `loadPage({locale})` from the storefront's canonical,
+merchant-specific market allowlist. Use
+[`weaverse-content-api`](../../weaverse-content-api/SKILL.md) for authenticated
+per-locale content reads and writes.
 
 ---
 

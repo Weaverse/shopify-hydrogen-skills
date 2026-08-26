@@ -153,11 +153,11 @@ Hydrogen supports Shopify's Customer Account API:
 
 ```tsx
 // Check if customer is logged in
-export async function loader({ context }: LoaderFunctionArgs) {
+export async function loader({ context, request }: LoaderFunctionArgs) {
   const isLoggedIn = await context.customerAccount.isLoggedIn();
 
   if (!isLoggedIn) {
-    return redirect('/account/login');
+    return redirect(localizedPathForRequest(request, '/account/login'));
   }
 
   const { data } = await context.customerAccount.query(CUSTOMER_QUERY);
@@ -167,53 +167,16 @@ export async function loader({ context }: LoaderFunctionArgs) {
 
 ## Internationalization (i18n)
 
-### Locale Detection
+Market localization crosses request parsing, Hydrogen context, Weaverse,
+navigation, cart, accounts, SEO, and production configuration. Use the
+[`hydrogen-markets-localization`](../../hydrogen-markets-localization/SKILL.md)
+skill for the canonical end-to-end procedure and verification matrix.
 
-Weaverse Hydrogen themes typically use URL prefix-based locale detection:
-
-```tsx
-// server.ts
-function getLocaleFromRequest(request: Request): I18nLocale {
-  const url = new URL(request.url);
-  const firstPathPart = url.pathname.split('/')[1]?.toUpperCase();
-
-  // Match locale from URL prefix
-  const locales: Record<string, I18nLocale> = {
-    EN: { language: 'EN', country: 'US' },
-    FR: { language: 'FR', country: 'FR' },
-    DE: { language: 'DE', country: 'DE' },
-  };
-
-  return locales[firstPathPart] ?? { language: 'EN', country: 'US' };
-}
-```
-
-### Route Structure for i18n
-
-```
-app/routes/
-├── ($locale)._index.tsx           # Homepage
-├── ($locale).products.$handle.tsx  # Product page
-├── ($locale).collections.$handle.tsx  # Collection page
-├── ($locale).pages.$handle.tsx     # Custom page
-└── ($locale).blogs.$blogHandle.$articleHandle.tsx  # Article
-```
-
-The `($locale)` segment is optional — pages work with and without a locale prefix.
-
-### Localized Queries
-
-Always pass language and country to Storefront API queries:
-
-```tsx
-const { product } = await storefront.query(PRODUCT_QUERY, {
-  variables: {
-    handle,
-    language: storefront.i18n.language,
-    country: storefront.i18n.country,
-  },
-});
-```
+Do not accept arbitrary locale-shaped route segments or maintain a second
+locale map in this reference. Derive `storefront.i18n` from the storefront's
+merchant-specific market allowlist. Hydrogen then applies that context to
+Storefront API queries; pass explicit language/country variables only when the
+query intentionally overrides the active request market.
 
 ## Hydrogen Components
 
