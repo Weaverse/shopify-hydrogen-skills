@@ -22,8 +22,8 @@ below fail with `MODULE_NOT_FOUND`. Add the helpers once:
 npx skills add Weaverse/shopify-hydrogen-skills --skill shopify-hydrogen
 ```
 
-The `references/` files in this skill remain a usable offline fallback if you
-would rather not install it.
+This skill has no `references/` directory, so the phases below are its only
+offline guidance; the live-doc commands are optional enrichment.
 
 ```bash
 # Always fetch latest docs before making decisions
