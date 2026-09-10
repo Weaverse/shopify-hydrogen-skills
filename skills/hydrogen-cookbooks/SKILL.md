@@ -9,16 +9,18 @@ Concrete, step-by-step guides for building specific features in a Shopify Hydrog
 
 ## Live Documentation
 
+Run these from this skill's own folder. The helpers ship inside the sibling `shopify-hydrogen` skill, which the skill pack installs alongside this one.
+
 For the latest Hydrogen cookbook recipes from Shopify:
 
 ```bash
-node scripts/search_shopify_docs.mjs "hydrogen cookbook <topic>"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "hydrogen cookbook <topic>"
 ```
 
 For Weaverse-specific patterns:
 
 ```bash
-node scripts/search_weaverse_docs.mjs "<topic>"
+node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "<topic>"
 ```
 
 The references below are curated guides that may include Weaverse-specific patterns not available in the live docs.

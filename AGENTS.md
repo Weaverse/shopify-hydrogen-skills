@@ -18,10 +18,6 @@ See [INSTALL.md](INSTALL.md) for manual per-agent setup.
 
 ```
 package.json                       # Node ESM config for running scripts
-scripts/
-  search_shopify_docs.mjs          # Live Shopify Hydrogen API docs search
-  search_weaverse_docs.mjs         # Live Weaverse docs search
-  get_weaverse_page.mjs            # Fetch a specific Weaverse doc page
 INSTALL.md                         # Detailed per-agent installation guide
 AGENTS.md                          # This file — repo guidance for agents
 .cursorrules                       # Cursor rules (synced with skill content)
@@ -31,6 +27,11 @@ skills/
   shopify-hydrogen/                # Core Hydrogen APIs (live + offline)
     SKILL.md
     references/                    # 3 reference files (cached API docs)
+    scripts/                       # Shared live-doc helpers, installed with the pack
+      search_shopify_docs.mjs      # Live Shopify Hydrogen API docs search
+      search_weaverse_docs.mjs     # Live Weaverse docs search
+      get_weaverse_page.mjs        # Fetch a specific Weaverse doc page
+      check_docs_helpers.mjs       # Boundary checks for the helpers (no network)
   weaverse-hydrogen/               # Weaverse CMS + Hydrogen fundamentals
     SKILL.md
     references/                    # 13 deep-dive reference files
@@ -71,15 +72,30 @@ Instead of baking static API docs into skill files (which go stale), this repo s
 
 | Script | Source | What it does |
 |--------|--------|--------------|
-| `scripts/search_shopify_docs.mjs` | `shopify.dev/assistant/search` | Search Hydrogen API docs |
-| `scripts/search_weaverse_docs.mjs` | `docs.weaverse.io/mcp` | Search Weaverse docs (Mintlify) |
-| `scripts/get_weaverse_page.mjs` | `docs.weaverse.io/mcp` | Fetch a full doc page by path |
+| `skills/shopify-hydrogen/scripts/search_shopify_docs.mjs` | `shopify.dev/assistant/search` | Search Hydrogen API docs |
+| `skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs` | `weaverse.io/docs/mcp` | Search Weaverse docs (Mintlify) |
+| `skills/shopify-hydrogen/scripts/get_weaverse_page.mjs` | `weaverse.io/docs/mcp` | Fetch a full doc page by path |
 
 Usage:
 ```bash
-node scripts/search_shopify_docs.mjs "createHydrogenContext"
-node scripts/search_weaverse_docs.mjs "component schema"
-node scripts/get_weaverse_page.mjs "development-guide/component-schema"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "createHydrogenContext"
+node skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs "component schema"
+node skills/shopify-hydrogen/scripts/get_weaverse_page.mjs "development-guide/component-schema"
+```
+
+The helpers live inside the `shopify-hydrogen` skill so that a native skill
+installation (which copies only the selected skill folders) still ships them.
+Sibling skills reference them as `../shopify-hydrogen/scripts/<file>.mjs`.
+
+Each helper exits non-zero when the docs endpoint reports a failure, including an
+HTTP 200 carrying a JSON-RPC `error` or a tool-level `result.isError`, so a caller
+never mistakes a missing page for an empty one. `get_weaverse_page.mjs` composes a
+shell command for the docs filesystem tool, so it accepts only
+`[A-Za-z0-9._/-]` page paths (no `..`) and rejects anything else before any
+request. Verify both contracts without network access:
+
+```bash
+node skills/shopify-hydrogen/scripts/check_docs_helpers.mjs
 ```
 
 All scripts use Node.js built-ins only (no dependencies needed). Require Node.js 18+.

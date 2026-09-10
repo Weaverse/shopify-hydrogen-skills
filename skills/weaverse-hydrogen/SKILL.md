@@ -10,18 +10,20 @@ description: "Build Shopify Hydrogen storefronts with Weaverse — components, s
 
 ## Live Documentation
 
+Run these from this skill's own folder. The helpers ship inside the sibling `shopify-hydrogen` skill, which the skill pack installs alongside this one.
+
 For the most up-to-date Weaverse documentation, use these scripts:
 
-- `node scripts/search_weaverse_docs.mjs "<query>"` — search Weaverse docs
-- `node scripts/get_weaverse_page.mjs "<page-path>"` — fetch a specific page (use paths from search results)
+- `node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"` — search Weaverse docs
+- `node ../shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"` — fetch a specific page (use paths from search results)
 - Weaverse docs: https://docs.weaverse.io
 
 **Examples:**
 ```bash
-node scripts/search_weaverse_docs.mjs "component schema"
-node scripts/search_weaverse_docs.mjs "data fetching"
-node scripts/get_weaverse_page.mjs "development-guide/component-schema"
-node scripts/get_weaverse_page.mjs "api-reference/weaverse-client"
+node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "component schema"
+node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "data fetching"
+node ../shopify-hydrogen/scripts/get_weaverse_page.mjs "development-guide/component-schema"
+node ../shopify-hydrogen/scripts/get_weaverse_page.mjs "api-reference/weaverse-client"
 ```
 
 The reference files below provide offline context but may not reflect the latest changes.
