@@ -11,7 +11,19 @@ description: "Integrate Weaverse into an existing Shopify Hydrogen project — a
 
 ## Live Documentation
 
-Run these from this skill's own folder. The helpers ship inside the sibling `shopify-hydrogen` skill, which the skill pack installs alongside this one.
+Run these from this skill's own folder. The helpers ship inside the sibling
+`shopify-hydrogen` skill, so `../shopify-hydrogen/scripts/` exists whenever the
+whole pack is installed.
+
+If you installed this skill on its own, that folder is absent and the commands
+below fail with `MODULE_NOT_FOUND`. Add the helpers once:
+
+```bash
+npx skills add Weaverse/shopify-hydrogen-skills --skill shopify-hydrogen
+```
+
+The `references/` files in this skill remain a usable offline fallback if you
+would rather not install it.
 
 ```bash
 # Always fetch latest docs before making decisions

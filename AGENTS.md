@@ -84,8 +84,17 @@ node skills/shopify-hydrogen/scripts/get_weaverse_page.mjs "development-guide/co
 ```
 
 The helpers live inside the `shopify-hydrogen` skill so that a native skill
-installation (which copies only the selected skill folders) still ships them.
-Sibling skills reference them as `../shopify-hydrogen/scripts/<file>.mjs`.
+installation still ships them, and sibling skills reference them as
+`../shopify-hydrogen/scripts/<file>.mjs`.
+
+The installer copies only the selected skill folders, so those sibling paths
+resolve when the whole pack is installed (`--skill '*'`, or the default
+`npx skills add Weaverse/shopify-hydrogen-skills`). Installing a single dependent
+skill on its own leaves them dangling; each dependent `SKILL.md` says so and
+gives the one-line fix, `npx skills add Weaverse/shopify-hydrogen-skills --skill
+shopify-hydrogen`. The helpers are deliberately not duplicated into each skill:
+six copies would drift, and the `skills` CLI has no dependency manifest to
+declare instead.
 
 Each helper exits non-zero when the docs endpoint reports a failure, including an
 HTTP 200 carrying a JSON-RPC `error` or a tool-level `result.isError`, so a caller
