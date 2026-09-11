@@ -153,16 +153,30 @@ When a question is broader than a single vendor, prefer the reference doc that a
 
 ## Live docs
 
+Run these from this skill's own folder. The helpers ship inside the sibling
+`shopify-hydrogen` skill, so `../shopify-hydrogen/scripts/` exists whenever the
+whole pack is installed.
+
+If you installed this skill on its own, that folder is absent and the commands
+below fail with `MODULE_NOT_FOUND`. Add the helpers once:
+
+```bash
+npx skills add Weaverse/shopify-hydrogen-skills --skill shopify-hydrogen
+```
+
+The `references/` files in this skill remain a usable offline fallback if you
+would rather not install it.
+
 For up-to-date official sources:
 
 ```bash
 # Shopify Hydrogen / Oxygen
-node scripts/search_shopify_docs.mjs "oxygen full-page cache"
-node scripts/search_shopify_docs.mjs "consent mode"
-node scripts/search_shopify_docs.mjs "analytics provider"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "oxygen full-page cache"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "consent mode"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "analytics provider"
 
 # Weaverse (if using Weaverse CMS)
-node scripts/search_weaverse_docs.mjs "csp"
+node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "csp"
 ```
 
 Vendor docs (open in browser, no script):

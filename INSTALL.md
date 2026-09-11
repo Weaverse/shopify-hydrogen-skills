@@ -61,15 +61,10 @@ For each agent in `AGENTS`, follow the relevant section below.
 
 The **skills source** is: `https://github.com/Weaverse/shopify-hydrogen-skills`
 
-Clone it temporarily, then copy the skill folders **and** the scripts directory:
-
-```
-shopify-hydrogen/
-hydrogen-cookbooks/
-hydrogen-upgrades/
-weaverse-hydrogen/
-scripts/          ← live doc fetching scripts
-```
+Clone it temporarily, then copy every folder under `skills/` into the destination.
+Each skill folder is self-contained: the shared live-doc helpers ship inside
+`shopify-hydrogen/scripts/`, and `theme-update`, `weaverse-content-api` and
+`generating-weaverse-project-json` carry their own `scripts/`.
 
 These should land flat inside the destination — **not** wrapped in a subfolder.
 
@@ -81,7 +76,7 @@ git clone https://github.com/Weaverse/shopify-hydrogen-skills /tmp/h-skills --de
 
 Then copy based on scope (see each agent below for specific paths).
 
-> **Note:** The `theme-update` skill includes its own `scripts/check_pilot_updates.mjs` inside `skills/theme-update/scripts/`. This gets copied along with the skill automatically.
+> **Note:** Skill-owned scripts (for example `skills/theme-update/scripts/check_pilot_updates.mjs`) are copied along with their skill automatically.
 
 ---
 
@@ -96,32 +91,10 @@ Then copy based on scope (see each agent below for specific paths).
 **Copy the skills:**
 ```bash
 # Global
-cp -r /tmp/h-skills/skills/shopify-hydrogen    ~/.claude/skills/
-cp -r /tmp/h-skills/skills/hydrogen-cookbooks  ~/.claude/skills/
-cp -r /tmp/h-skills/skills/hydrogen-upgrades   ~/.claude/skills/
-cp -r /tmp/h-skills/skills/weaverse-hydrogen   ~/.claude/skills/
-cp -r /tmp/h-skills/skills/theme-update        ~/.claude/skills/
-cp -r /tmp/h-skills/skills/weaverse-integration  ~/.claude/skills/
-cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ~/.claude/skills/
-cp -r /tmp/h-skills/skills/figma-to-weaverse    ~/.claude/skills/
-cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ~/.claude/skills/
-cp -r /tmp/h-skills/skills/weaverse-content-api  ~/.claude/skills/
-cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ~/.claude/skills/
-cp -r /tmp/h-skills/scripts                    ~/.claude/skills/
+cp -r /tmp/h-skills/skills/* ~/.claude/skills/
 
 # Local
-cp -r /tmp/h-skills/skills/shopify-hydrogen    ./skills/
-cp -r /tmp/h-skills/skills/hydrogen-cookbooks  ./skills/
-cp -r /tmp/h-skills/skills/hydrogen-upgrades   ./skills/
-cp -r /tmp/h-skills/skills/weaverse-hydrogen   ./skills/
-cp -r /tmp/h-skills/skills/theme-update        ./skills/
-cp -r /tmp/h-skills/skills/weaverse-integration  ./skills/
-cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ./skills/
-cp -r /tmp/h-skills/skills/figma-to-weaverse    ./skills/
-cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ./skills/
-cp -r /tmp/h-skills/skills/weaverse-content-api  ./skills/
-cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ./skills/
-cp -r /tmp/h-skills/scripts                    ./skills/
+cp -r /tmp/h-skills/skills/* ./skills/
 ```
 
 **Config file to update:**
@@ -149,10 +122,10 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
-For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
-- `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/search_weaverse_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/get_weaverse_page.mjs "<page-path>"`
+For live docs, use the helper scripts shipped inside the `shopify-hydrogen` skill:
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_shopify_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"`
 ```
 
 Replace `{SKILLS_DESTINATION}` with the actual destination path from the table above.
@@ -197,10 +170,10 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
-For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
-- `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/search_weaverse_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/get_weaverse_page.mjs "<page-path>"`
+For live docs, use the helper scripts shipped inside the `shopify-hydrogen` skill:
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_shopify_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"`
 ```
 
 Replace `{SKILLS_DESTINATION}` with the actual destination path.
@@ -234,10 +207,10 @@ Before working on any Shopify Hydrogen or Weaverse-related task, refer to:
 - ./skills/generating-weaverse-project-json/SKILL.md
 - ./skills/hydrogen-markets-localization/SKILL.md
 
-For live docs, use the scripts in ./skills/scripts/:
-- `node ./skills/scripts/search_shopify_docs.mjs "<query>"`
-- `node ./skills/scripts/search_weaverse_docs.mjs "<query>"`
-- `node ./skills/scripts/get_weaverse_page.mjs "<page-path>"`
+For live docs, use the helper scripts shipped inside the `shopify-hydrogen` skill:
+- `node ./skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "<query>"`
+- `node ./skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"`
+- `node ./skills/shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"`
 ```
 
 ---
@@ -277,10 +250,10 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
-For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
-- `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/search_weaverse_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/get_weaverse_page.mjs "<page-path>"`
+For live docs, use the helper scripts shipped inside the `shopify-hydrogen` skill:
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_shopify_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"`
 ```
 
 ---
@@ -320,10 +293,10 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/weaverse-content-api/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-markets-localization/SKILL.md
 
-For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
-- `node {SKILLS_DESTINATION}/scripts/search_shopify_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/search_weaverse_docs.mjs "<query>"`
-- `node {SKILLS_DESTINATION}/scripts/get_weaverse_page.mjs "<page-path>"`
+For live docs, use the helper scripts shipped inside the `shopify-hydrogen` skill:
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_shopify_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/search_weaverse_docs.mjs "<query>"`
+- `node {SKILLS_DESTINATION}/shopify-hydrogen/scripts/get_weaverse_page.mjs "<page-path>"`
 ```
 
 ---
@@ -339,17 +312,7 @@ For live docs, use the scripts in {SKILLS_DESTINATION}/scripts/:
 **Copy the skills:**
 ```bash
 # Global
-cp -r /tmp/h-skills/skills/shopify-hydrogen    ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/hydrogen-cookbooks  ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/hydrogen-upgrades   ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/weaverse-hydrogen   ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/theme-update        ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/weaverse-integration  ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/cloning-websites-to-weaverse  ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/generating-weaverse-project-json  ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/skills/hydrogen-markets-localization  ~/.openclaw/workspace/skills/
-cp -r /tmp/h-skills/scripts                    ~/.openclaw/workspace/skills/
-
+cp -r /tmp/h-skills/skills/* ~/.openclaw/workspace/skills/
 # Local — same as Claude Code local above
 ```
 
@@ -395,16 +358,13 @@ Skills copied to:
 
   Each destination now contains:
   ├── shopify-hydrogen/
+  │   └── scripts/          (search_shopify_docs, search_weaverse_docs, get_weaverse_page)
   ├── hydrogen-cookbooks/
   ├── hydrogen-upgrades/
   ├── weaverse-hydrogen/
   ├── theme-update/
   ├── weaverse-integration/
-  ├── hydrogen-markets-localization/
-  └── scripts/
-      ├── search_shopify_docs.mjs
-      ├── search_weaverse_docs.mjs
-      └── get_weaverse_page.mjs
+  └── ... (one folder per skill)
 
 Config files updated:
   - ~/.claude/CLAUDE.md

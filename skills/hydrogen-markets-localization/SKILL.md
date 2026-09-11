@@ -9,13 +9,27 @@ Implement or review market localization as one end-to-end contract. A locale swi
 
 ## Live documentation
 
+Run these from this skill's own folder. The helpers ship inside the sibling
+`shopify-hydrogen` skill, so `../shopify-hydrogen/scripts/` exists whenever the
+whole pack is installed.
+
+If you installed this skill on its own, that folder is absent and the commands
+below fail with `MODULE_NOT_FOUND`. Add the helpers once:
+
+```bash
+npx skills add Weaverse/shopify-hydrogen-skills --skill shopify-hydrogen
+```
+
+The `references/` files in this skill remain a usable offline fallback if you
+would rather not install it.
+
 Check current contracts before changing framework or platform behavior:
 
 ```bash
-node scripts/search_shopify_docs.mjs "Hydrogen localization Shopify Markets i18n country language"
-node scripts/search_shopify_docs.mjs "Hydrogen Customer Account logout postLogoutRedirectUri"
-node scripts/search_shopify_docs.mjs "Hydrogen SEO canonical hreflang sitemap"
-node scripts/search_weaverse_docs.mjs "localization Translation Manager locale"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "Hydrogen localization Shopify Markets i18n country language"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "Hydrogen Customer Account logout postLogoutRedirectUri"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "Hydrogen SEO canonical hreflang sitemap"
+node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "localization Translation Manager locale"
 ```
 
 Use repository references only as an offline fallback. Never infer current Shopify or Weaverse APIs from examples in this skill.

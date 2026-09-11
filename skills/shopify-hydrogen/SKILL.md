@@ -13,6 +13,8 @@ Hydrogen is Shopify's opinionated stack for headless commerce, built on React Ro
 
 ## Live Documentation
 
+Run these from this skill's own folder; the paths below are relative to the skill root.
+
 For the most up-to-date Hydrogen API docs, use the search script:
 
 ```bash

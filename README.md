@@ -56,14 +56,14 @@ Instead of baking static API docs into skill files (which go stale), this repo s
 
 ```bash
 # Search Shopify Hydrogen docs (shopify.dev)
-node scripts/search_shopify_docs.mjs "createHydrogenContext"
-node scripts/search_shopify_docs.mjs "CartForm actions"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "createHydrogenContext"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "CartForm actions"
 
 # Search Weaverse docs (docs.weaverse.io)
-node scripts/search_weaverse_docs.mjs "component schema"
+node skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs "component schema"
 
 # Fetch a specific Weaverse doc page
-node scripts/get_weaverse_page.mjs "development-guide/component-schema"
+node skills/shopify-hydrogen/scripts/get_weaverse_page.mjs "development-guide/component-schema"
 
 # Check for Pilot theme updates
 node skills/theme-update/scripts/check_pilot_updates.mjs
@@ -73,10 +73,11 @@ The `references/` folders in each skill serve as **offline fallback** — cached
 
 | Script | Source | Endpoint |
 |--------|--------|----------|
-| `search_shopify_docs.mjs` | shopify.dev | Hydrogen API search |
-| `search_weaverse_docs.mjs` | docs.weaverse.io | Weaverse docs search (Mintlify MCP) |
-| `get_weaverse_page.mjs` | docs.weaverse.io | Full page fetch by path |
-| `check_pilot_updates.mjs` | github.com | Pilot release version check |
+| `shopify-hydrogen/scripts/search_shopify_docs.mjs` | shopify.dev | Hydrogen API search |
+| `shopify-hydrogen/scripts/search_weaverse_docs.mjs` | weaverse.io/docs | Weaverse docs search (Mintlify MCP) |
+| `shopify-hydrogen/scripts/get_weaverse_page.mjs` | weaverse.io/docs | Full page fetch by path |
+| `shopify-hydrogen/scripts/check_docs_helpers.mjs` | none | Helper boundary checks (offline) |
+| `theme-update/scripts/check_pilot_updates.mjs` | github.com | Pilot release version check |
 
 All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 
@@ -135,11 +136,6 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   └── hydrogen-markets-localization/ # Markets and localization workflow
 │       ├── SKILL.md
 │       └── references/              # Verification checklist
-│
-├── scripts/                       # Live doc fetching (shared)
-│   ├── search_shopify_docs.mjs
-│   ├── search_weaverse_docs.mjs
-│   └── get_weaverse_page.mjs
 │
 ├── .cursorrules                   # Cursor agent rules
 ├── AGENTS.md                      # Repo guidance for AI agents
