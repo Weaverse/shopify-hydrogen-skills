@@ -21,7 +21,9 @@ npx playwright install chromium   # browser matching the resolved version
 ```
 
 Options: `--only block,block` to re-check a subset while iterating,
-`--out <dir>` to write elsewhere (default `.figma/visual/<name>/`).
+`--out <dir>` to write elsewhere (default `.figma/visual/<name>/`),
+`--url <page url>` to run the same spec against another host such as the
+deployed storefront (output goes to `.figma/visual/<name>-remote/`).
 
 ## Reference images
 
@@ -80,10 +82,14 @@ checks only.
 - `threshold` — max share of mismatching pixels (default 0.12);
   `aspectTolerance` — max relative height/width drift (default 0.08). Both can
   be set per block.
-- `mode: "structure"` — screenshot + hard checks only, no pixel comparison. Use
-  it only for blocks whose content is data, not design: product grids/rails fed
-  by a collection, live Instagram feeds, blocks where Figma shows placeholders.
-  Always add a `note` saying why.
+- `mode: "structure"` — no pixel comparison. Use it only for blocks whose
+  content is data, not design: product grids/rails fed by a collection, live
+  Instagram feeds, blocks where Figma shows placeholders. Always add a `note`
+  saying why. Keep the `reference` when the block has a fixed footprint: the
+  aspect-ratio check still runs, which catches an empty feed or a collapsed
+  rail (a production Instagram feed with a missing token rendered only its
+  header and failed this way). Drop the reference only for blocks whose height
+  depends on the data, such as a paginated product grid.
 - `hide` — selectors removed before screenshots (newsletter popups, cookie
   banners, chat widgets).
 

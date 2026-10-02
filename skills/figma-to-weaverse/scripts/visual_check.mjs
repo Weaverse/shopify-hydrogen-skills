@@ -2,7 +2,8 @@
 // Visual + structural check of a rendered Weaverse page against its Figma design.
 //
 // Usage (run from the storefront repo so Playwright resolves from its node_modules):
-//   node <skill>/scripts/visual_check.mjs <spec.json> [--only <block,...>] [--out <dir>]
+//   node <skill>/scripts/visual_check.mjs <spec.json> [--only <block,...>] [--out <dir>] [--url <page url>]
+//   (--url re-runs the same spec against another host, e.g. the deployed storefront)
 //
 // The spec (see references/visual-check.md) lists the page URL, viewports, the
 // expected section order, and per-block selectors with Figma reference images.
@@ -53,7 +54,10 @@ async function loadPlaywright() {
 const spec = JSON.parse(await readFile(specPath, "utf8"));
 const specDir = dirname(resolve(specPath));
 const only = flag("only")?.split(",").map((s) => s.trim());
-const outDir = resolve(flag("out") ?? spec.out ?? join(specDir, "visual", spec.name ?? "page"));
+const url = flag("url") ?? spec.url;
+const outDir = resolve(
+  flag("out") ?? spec.out ?? join(specDir, "visual", flag("url") ? `${spec.name ?? "page"}-remote` : (spec.name ?? "page")),
+);
 const DEFAULT_THRESHOLD = spec.threshold ?? 0.12;
 const DEFAULT_ASPECT_TOLERANCE = spec.aspectTolerance ?? 0.08;
 const viewports = spec.viewports ?? [
@@ -70,7 +74,7 @@ const browser = await chromium.launch().catch((error) => {
   );
   process.exit(2);
 });
-const report = { url: spec.url, createdAt: new Date().toISOString(), viewports: [] };
+const report = { url, createdAt: new Date().toISOString(), viewports: [] };
 let failed = false;
 
 for (const vp of viewports) {
@@ -91,7 +95,7 @@ for (const vp of viewports) {
     }
   });
 
-  await page.goto(spec.url, { waitUntil: "networkidle", timeout: 120_000 });
+  await page.goto(url, { waitUntil: "networkidle", timeout: 120_000 });
   // Scroll through the page so lazy images and scroll-reveal sections render.
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 400) {
@@ -211,9 +215,28 @@ for (const vp of viewports) {
 
     const refKey = vp.name === "desktop" ? "reference" : `reference${vp.name[0].toUpperCase()}${vp.name.slice(1)}`;
     const refFile = block[refKey];
-    if (!refFile || block.mode === "structure") {
+    if (!refFile) {
       result.ok = true;
       result.mode = "structure";
+      continue;
+    }
+    if (block.mode === "structure") {
+      // Content is data (live feed, products), so pixels can't match — but the
+      // block must still occupy the designed footprint. An empty feed or a
+      // collapsed grid shows up as aspect drift.
+      const png = await readFile(resolve(specDir, refFile));
+      const refAspect = png.readUInt32BE(20) / png.readUInt32BE(16);
+      const aspectDrift = box ? Math.abs(box.height / box.width - refAspect) / refAspect : 1;
+      const aspectTolerance = block.aspectTolerance ?? DEFAULT_ASPECT_TOLERANCE;
+      Object.assign(result, {
+        mode: "structure",
+        aspectDrift: Number(aspectDrift.toFixed(3)),
+        aspectTolerance,
+        ok: aspectDrift <= aspectTolerance,
+      });
+      if (!result.ok) {
+        failed = true;
+      }
       continue;
     }
     const refPath = resolve(specDir, refFile);
@@ -296,7 +319,7 @@ for (const vp of viewports) {
 }
 await browser.close();
 
-const lines = [`# Visual check — ${spec.url}`, "", `Result: **${failed ? "FAIL" : "PASS"}**`, ""];
+const lines = [`# Visual check — ${url}`, "", `Result: **${failed ? "FAIL" : "PASS"}**`, ""];
 for (const vp of report.viewports) {
   lines.push(`## ${vp.name} (${vp.width}×${vp.height})`, "");
   for (const c of vp.checks) {

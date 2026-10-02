@@ -90,7 +90,7 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
     - Never pass by raising thresholds or switching a block to `structure` to hide a real design difference.
     - Escalate to the user with the diff images when a block makes no progress for three iterations or needs a decision/asset you don't have.
     - The script covers JS errors, broken images, overflow, H1 count, section order and clipped rounded elements. Still exercise interactions by hand: hover effects, filters change the URL and the result count, sort, load more, menu links resolve; count products in the rendered DOM, not in loader JSON.
-    - After deploy, re-run the same spec against the deployed URL.
+    - After deploy, re-run the same spec against the deployed URL (`--url https://<storefront>/<path>`).
 12. **Clean up and hand over.** Remove the page's preview branch, commit (with the visual spec and references; the generated `.figma/visual/` output can stay untracked), push, watch the deploy workflow of *this* storefront (sibling-brand workflows in the same repo may fail for unrelated reasons). Report the final visual-check result, the accepted exceptions, and what Studio still needs (page SEO, missing collections/links, unpublished resources).
 
 ## Figma-specific differences from website cloning
