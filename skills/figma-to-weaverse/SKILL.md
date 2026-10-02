@@ -49,6 +49,7 @@ Same three deliverables as the website cloning skill, plus the live page:
 2. **Clone preview route** — a `$page` branch in `app/routes/clone-preview.$page.tsx` rendering the full design as React + Tailwind, section-marked, brand-adjusted. **User must approve this before section decomposition.**
 3. **Design spec** — section mapping, annotation table, schema boundaries, interaction model, token mapping.
 4. **Live Weaverse page** — pushed through the Content API and verified on the deployed storefront, with the page JSON kept in `.clone/<page>/`.
+5. **Visual check PASS** — `.figma/<page>.visual.json` + Figma reference screenshots in `.figma/ref/<page>/`, and a final `scripts/visual_check.mjs` report that says `Result: PASS` (exceptions listed). The page is not done without it.
 
 ## Extraction with Figma MCP (MCP-first)
 
@@ -72,7 +73,7 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 ## Workflow
 
 1. **Preflight** (above). Read `.guides/brand-guideline.md`; ensure `sections.md` is current.
-2. **Extract** the design (steps above). Save the spec + manifest as `.figma/<brand>-<page>.md` (token table, annotation table, content manifest, gaps).
+2. **Extract** the design (steps above). Save the spec + manifest as `.figma/<brand>-<page>.md` (token table, annotation table, content manifest, gaps). While the node ids are at hand, save a Figma screenshot of every block frame to `.figma/ref/<page>/<block>.png` (`get_screenshot` → `curl`; the URLs are short-lived). These are the visual-check references.
 3. **Build the content manifest** — same columns and rules as the cloning skill.
 4. **Generate the clone preview route** at `app/routes/clone-preview.$page.tsx` — one `$page` branch per page, React + Tailwind, real Figma assets, `{/* === BLOCK NAME === */}` markers. Header/footer are not part of it.
 5. **User approval checkpoint — STOP and wait.** Present the preview URL (the dev server port printed by `npm run dev`, not a guessed one) + block count, brand overrides, gaps. Iterate until the user approves.
@@ -84,12 +85,13 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 8. **Integrate.** Register new sections, update `sections.md`, run the formatter on changed files only, typecheck and compare against the pre-change error baseline, build the way CI builds.
 9. **Generate the page JSON** with `generating-weaverse-project-json` (Shopify media objects, no default values, presets written explicitly), validate it.
 10. **Deliver through the Content API** (`weaverse-content-api`): `create-page` for CUSTOM/template pages (INDEX already exists), then one PATCH that relinks the root `main` and creates every item. Sitewide values go through `theme-update` (back up the old values first); menus go through the admin proxy (`menuUpdate`, back up the old menu). If the page needs code that isn't deployed yet, deploy right after (or tell the user the live page is broken until then).
-11. **Verify on the real route**, locally (restart the dev server after PATCHes) and on the deployed storefront:
-    - every section renders, one H1, no JS errors, no broken images, no horizontal overflow at 390px;
-    - counts come from the rendered DOM, not from loader JSON (the JSON can contain products the UI doesn't show);
-    - interactions work: hover effects, filters change the URL and the result count, sort, load more, menu links resolve;
-    - rounded/edge tiles aren't clipped at 1280–1440px widths.
-12. **Clean up and hand over.** Remove the page's preview branch, commit, push, watch the deploy workflow of *this* storefront (sibling-brand workflows in the same repo may fail for unrelated reasons). Report what Studio still needs (page SEO, missing collections/links, unpublished resources).
+11. **Verify on the real route with Playwright — loop until PASS.** Write `.figma/<page>.visual.json` (one block per section: `[data-wv-id]` selector + reference image; `mode: "structure"` with a `note` only for data-driven or placeholder blocks) and run `node <this skill>/scripts/visual_check.mjs .figma/<page>.visual.json` from the storefront repo. Spec format, setup and the fix playbook: `references/visual-check.md`.
+    - Read `report.md`; for every ❌ open the block screenshot, the reference and the `.diff.png`, fix **one** cause (section settings via Content API, or section code), re-run with `--only <block>`. Repeat until the full run prints `Result: PASS` on desktop and mobile.
+    - Never pass by raising thresholds or switching a block to `structure` to hide a real design difference.
+    - Escalate to the user with the diff images when a block makes no progress for three iterations or needs a decision/asset you don't have.
+    - The script covers JS errors, broken images, overflow, H1 count, section order and clipped rounded elements. Still exercise interactions by hand: hover effects, filters change the URL and the result count, sort, load more, menu links resolve; count products in the rendered DOM, not in loader JSON.
+    - After deploy, re-run the same spec against the deployed URL.
+12. **Clean up and hand over.** Remove the page's preview branch, commit (with the visual spec and references; the generated `.figma/visual/` output can stay untracked), push, watch the deploy workflow of *this* storefront (sibling-brand workflows in the same repo may fail for unrelated reasons). Report the final visual-check result, the accepted exceptions, and what Studio still needs (page SEO, missing collections/links, unpublished resources).
 
 ## Figma-specific differences from website cloning
 
@@ -118,6 +120,8 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 - **Dropping annotations** — designer notes about heading levels, link targets, menus and hover behavior are requirements; keep the annotation table and tick it off at the end.
 - **Reproducing designer placeholders** — gray boxes and sample cards are stand-ins for real data, not content.
 - **Declaring success from a stale dev server** — after a PATCH, restart `npm run dev`; the old process can keep serving previous item data under the same ids.
+- **Declaring the page done without a PASS visual check** — eyeballing a screenshot missed clipped tile corners that the check reports as `no clipped rounded elements ❌`. Run the loop to PASS, desktop and mobile.
+- **Loosening the check instead of fixing the page** — raising `threshold`, deleting a block, or marking it `structure` to make a real difference go away.
 
 ## Related skills
 

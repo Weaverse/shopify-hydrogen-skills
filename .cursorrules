@@ -33,7 +33,7 @@ Use these when you need the latest API references, not the offline references.
 | [hydrogen-upgrades](./skills/hydrogen-upgrades/SKILL.md) | Hydrogen version migration guides and upgrade process | Upgrading Hydrogen |
 | [theme-update](./skills/theme-update/SKILL.md) | Pilot theme update — detect version, plan changes, preserve customizations, verify build | Updating a customer's Pilot theme to a newer release |
 | [cloning-websites-to-weaverse](./skills/cloning-websites-to-weaverse/SKILL.md) | Reference website cloning workflow for Hydrogen + Weaverse | Cloning a site or brand hub into Weaverse |
-| [figma-to-weaverse](./skills/figma-to-weaverse/SKILL.md) | Figma design → Weaverse sections via Figma MCP (token mapping, manifest, preview) | Building a storefront from a Figma file |
+| [figma-to-weaverse](./skills/figma-to-weaverse/SKILL.md) | Figma design → Weaverse sections via Figma MCP (token mapping, manifest, preview, Playwright visual check to PASS) | Building a storefront from a Figma file |
 | [generating-weaverse-project-json](./skills/generating-weaverse-project-json/SKILL.md) | Weaverse project export JSON generation | Building import-ready Weaverse project files |
 | [weaverse-content-api](./skills/weaverse-content-api/SKILL.md) | Read/update live Weaverse content over REST — bulk edits, AI pipelines, Shopify upload | Updating a project after it exists |
 | [hydrogen-analytics-tracking](./skills/hydrogen-analytics-tracking/SKILL.md) | End-to-end analytics & conversion tracking — GTM, GA4 (browser + Measurement Protocol), Meta Pixel + CAPI, consent mode, CSP, Oxygen full-page cache, and A/B **experiment-exposure** tracking | Wiring analytics, pixels, server-side conversions, or A/B experiment tracking |

@@ -52,7 +52,9 @@ skills/
     SKILL.md
   figma-to-weaverse/               # Build Weaverse sections from a Figma design
     SKILL.md
-    references/
+    references/                    # MCP extraction cheat-sheet, visual-check spec + fix loop
+    scripts/
+      visual_check.mjs             # Playwright: render the page, compare blocks with Figma screenshots
   generating-weaverse-project-json/ # Generate Weaverse import JSON files
     SKILL.md
     references/
@@ -107,7 +109,7 @@ request. Verify both contracts without network access:
 node skills/shopify-hydrogen/scripts/check_docs_helpers.mjs
 ```
 
-All scripts use Node.js built-ins only (no dependencies needed). Require Node.js 18+.
+All scripts use Node.js built-ins only (no dependencies needed). Require Node.js 18+. One exception: `figma-to-weaverse/scripts/visual_check.mjs` drives a browser, so it needs Playwright; it resolves it from the storefront repo it runs in (Hydrogen projects usually have it) and prints the install command when it's missing.
 
 ## Content Sources
 
