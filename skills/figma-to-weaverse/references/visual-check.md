@@ -124,6 +124,10 @@ Where a cause usually lives:
 | Elements missing | child block not created, wrong image, setting off |
 | Clipped edges | container too narrow for the tiles — section code (fit-to-width) or tile sizes |
 | Layout impossible with current settings | section code change (keep new settings default-compatible), then deploy |
+| Photo framed differently (zoomed, shifted) though the image is the same | Figma crops image fills: `get_design_context` shows `<img class="absolute w-[149%] h-[143%] left-[-12%] top-[-30%]">`. Visible source rect = `x: -left/w … (100-left)/w`, `y: -top/h … (100-top)/h`. Crop the original to that rect (`sips -c H W --cropOffset Y X`), upload it, and keep the uncropped image as the mobile image where the mobile ratio differs |
+| Setting has no visible effect | value off the schema's step/options (e.g. a `gap` of 31 on a 4px-step select renders nothing) — snap to a valid value; or the dev server is serving stale section code — restart it |
+| Rail doesn't reach the viewport edge | an ancestor with `overflow:hidden` at content width clips the bleed — let the content box overflow when the rail bleeds and keep the outer section clipping; check `cn()` merges conflicting width classes |
+| Third-party overlay in the screenshot (purchase pop, chat, cookie bar) | add its selector to `hide`; if it shows wrong content (e.g. another brand's product), report it |
 
 Rules:
 
@@ -134,7 +138,8 @@ Rules:
   Write the reason in the block's `note` and list it in the final report.
 - **One cause per iteration**, then re-run, so you know what moved the score.
 - **Re-read data after Content API patches**: restart the dev server or test the
-  deployed URL; a running dev server can serve stale item data.
+  deployed URL; a running dev server can serve stale item data and, after
+  code edits, stale section modules too.
 - **Escalate instead of looping** when a block makes no progress for three
   iterations, or the fix needs a decision or asset you don't have (missing
   image, conflicting design, impossible layout). Report the diff images and the

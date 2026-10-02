@@ -150,7 +150,7 @@ export WEAVERSE_API_KEY=...
 node scripts/weaverse_content_api.mjs projects
 node scripts/weaverse_content_api.mjs languages <projectId>
 node scripts/weaverse_content_api.mjs theme <projectId>
-node scripts/weaverse_content_api.mjs theme-update <projectId> <theme.json>     # { "key": value, ... }
+node scripts/weaverse_content_api.mjs theme-update <projectId> <theme.json>     # flat { "key": value }; the script wraps it in { theme }
 node scripts/weaverse_content_api.mjs pages <projectId> [type]
 node scripts/weaverse_content_api.mjs page <projectId> <type> [handle] [locale]   # reads with ?locale
 node scripts/weaverse_content_api.mjs create-page <projectId> <type> <handle> [name]
@@ -181,6 +181,7 @@ Use it to inspect a project quickly and to apply patch files. For anything the s
 - **Trusting a local dev render right after a PATCH** — a running Hydrogen dev server can keep a cached copy of an item id it rendered before, so the page still shows old data. Restart the dev server (or verify on the deployed storefront) before concluding the patch didn't apply.
 - **Patching a live page with sections the deployed code doesn't have yet** — new section types or settings render broken on production until the code is deployed. Deploy first, or patch right before deploying and say so.
 - **Changing global theme keys without a backup** — save the current values from `GET theme-settings` before a `theme-update`.
+- **Wrapping the theme-update file in `{ "theme": … }`** — the script already wraps it, so this writes a stray `theme` key instead of your settings. Check `updatedKeys` in the response.
 
 ## Related skills
 
