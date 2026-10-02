@@ -29,7 +29,9 @@ The only hard requirement: you need to know which section types to use. Read `ap
 
 This skill produces an **import JSON** that establishes the project structure — pages, sections, and initial content. That JSON is **imported once** into the Weaverse Studio editor to create the project.
 
-After the structure exists, ongoing content edits (copy, images, localization, bulk updates) should go through the **`weaverse-content-api`** skill, not by re-importing. The Content API can only update items that already exist, so the import-then-update split matters: use this skill to create structure, `weaverse-content-api` to maintain it. Keep the item ids stable between the two.
+After the structure exists, ongoing content edits (copy, images, localization, bulk updates) should go through the **`weaverse-content-api`** skill, not by re-importing. Keep the item ids stable between the two so later patches target the same items.
+
+When the project already exists (the usual case for adding pages to a live store), you don't have to import at all: create the page with `POST /projects/:projectId/pages` and send the JSON's items in one `PATCH` (see "Populate a new or empty page" in `weaverse-content-api`). Keep the JSON file in the repo as the record of what was pushed, and sync it back if you change the live page afterwards.
 
 ## Generation Steps
 
@@ -37,7 +39,7 @@ After the structure exists, ongoing content edits (copy, images, localization, b
 2. **Identify registered types** — read `app/weaverse/components.ts` to know which section and block types are available
 3. **Read section source code** — for each section type you plan to use, read its source in `app/sections/` or `app/components/` to learn valid schema fields, enum values, and defaults
 4. **Build the JSON** following the structure below
-5. **Run the validator** — execute `python scripts/validate.py <output-file>` to catch structural errors
+5. **Run the validator** — execute `python3 scripts/validate.py <output-file>` (works on Python 3.8+) to catch structural errors
 6. **Fix any issues** the validator reports, then re-run until clean
 
 ## JSON Structure
@@ -147,6 +149,8 @@ Before writing any `select`, `toggle-group`, or `position` value, read the secti
 
 If a field matches the schema default, omit it. The Weaverse editor strips defaults on save. Including them creates noise.
 
+Schema **presets are not defaults**: a value a section's `presets` turn on (e.g. `enableOverlay: true`) is only applied when a merchant adds the section in Studio, not on import or Content API writes. Compare against the input's `defaultValue`, and write any preset value you actually want explicitly.
+
 ### Shopify entity references
 
 Collections and products use object format, not bare strings:
@@ -177,6 +181,8 @@ External images use a bare URL string. Shopify-hosted images use the media objec
 }
 ```
 
+For anything that will go live, use Shopify media. Figma MCP asset URLs (`figma.com/api/mcp/asset/...`) expire after about 7 days and some storefront image transforms block them; upload the files to Shopify first (`weaverse-content-api` → `upload`) and use the returned objects. SVGs upload as generic files and come back as a plain CDN URL string.
+
 ## ID Format Rules
 
 Page IDs and item IDs use different formats:
@@ -193,13 +199,14 @@ Integrity rules:
 - Every child reference must point to an existing item in the same page
 - Page IDs are CUIDs — use a CUID generator or produce 25-char lowercase alphanumeric strings
 - Item IDs are UUIDs — use UUID v7 format (timestamp-sortable, hyphenated)
+- When one repo holds several exports (one per page), give each page its own id range (e.g. `019b9400-…` for the homepage, `019b9500-…` for the next page) so items never collide when pages are pushed to the same project
 
 ## Validation
 
 After generating the JSON, run the bundled validator:
 
 ```bash
-python scripts/validate.py <path-to-output.json>
+python3 scripts/validate.py <path-to-output.json>
 ```
 
 The validator checks:
@@ -228,3 +235,5 @@ Fix any reported errors and re-run until clean. Do not deliver JSON that fails v
 | Copying entire demo theme blindly | Only include keys you understand and intend |
 | Missing `pageAssignments` | Every page needs a route assignment |
 | Fake Shopify IDs | Omit unknown IDs, let user select in editor |
+| Leaving Figma asset URLs in a live export | Upload to Shopify and use media objects — Figma asset URLs expire |
+| Relying on preset values | Presets aren't applied on import/API writes; set those values explicitly |

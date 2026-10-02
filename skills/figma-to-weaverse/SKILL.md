@@ -24,31 +24,46 @@ Do not use it for live-website cloning (use `cloning-websites-to-weaverse`) or t
 
 ## Required Inputs
 
-- Figma file/frame/node URL (or current selection)
+- Figma URL **with a `node-id`** (a page/frame), or the current selection. A file-only URL is not enough — ask for a node link.
 - `.guides/brand-guideline.md`
 - `sections.md`
 - `app/weaverse/components.ts`
+- Target page type and route (see Preflight)
+- For delivery: Weaverse project id + `WEAVERSE_API_KEY` (see `weaverse-content-api`)
+
+## Preflight (before extracting anything)
+
+Each of these cost a full rework loop when skipped:
+
+1. **Page type and route.** Ask whether the design becomes the homepage (`INDEX`), a landing page (`CUSTOM`, e.g. `/disney`), or a per-resource template (`COLLECTION`/`PRODUCT` for one handle). It decides which sections are allowed (`enabledOn`) and how data loads. Don't infer it from the nav link.
+2. **Right storefront.** `PUBLIC_STOREFRONT_ID` in `.env` must match the storefront in `.shopify/project.json`. A mismatched `.env` renders another brand's sales channel locally, and published collections look missing. Fix with `npx shopify hydrogen env pull`.
+3. **Right brand guideline.** Confirm `.guides/brand-guideline.md` describes this brand (repos are often cloned from a sibling brand). If it doesn't, follow the Figma tokens, say so in the spec, and ask the user to replace the guideline.
+4. **Weaverse project state.** Read the project's pages (`pages <projectId>`): empty `COLLECTION`/`PRODUCT` templates render header + footer only on those routes — flag it, it is not caused by your page.
+5. **Existing notes.** Read prior `.figma/*.md` specs in the repo; header/footer/menu work and token decisions may already exist.
 
 ## Required Outputs
 
-Same three deliverables as the website cloning skill:
+Same three deliverables as the website cloning skill, plus the live page:
 
-1. **Content manifest** — per-section table of real asset URLs (from Figma asset export), text, links, Shopify refs, media types.
-2. **Clone preview route** — a single `app/routes/clone-preview.$page.tsx` rendering the full design as React + Tailwind, section-marked, brand-adjusted. **User must approve this before section decomposition.**
-3. **Design spec** — section mapping, schema boundaries, interaction model, token mapping.
+1. **Content manifest** — per-section table of real asset URLs (from Figma asset export, later replaced by Shopify CDN URLs), text, links, Shopify refs, media types.
+2. **Clone preview route** — a `$page` branch in `app/routes/clone-preview.$page.tsx` rendering the full design as React + Tailwind, section-marked, brand-adjusted. **User must approve this before section decomposition.**
+3. **Design spec** — section mapping, annotation table, schema boundaries, interaction model, token mapping.
+4. **Live Weaverse page** — pushed through the Content API and verified on the deployed storefront, with the page JSON kept in `.clone/<page>/`.
 
 ## Extraction with Figma MCP (MCP-first)
 
 Use the Figma MCP tools. They return **structured** design data — more precise than scraped HTML for tokens and layout, but weaker on real interaction (a static design has no runtime behavior).
 
-> Before any `use_figma` write call, load the `figma-use` skill. For reads below, no write is needed.
+> Load `figma-design-to-code` before `get_design_context`, and `figma-use` before any `use_figma` write call.
 
-1. **Map the structure** — `get_metadata` on the file/frame to get the node tree. Top-level frames/sections become your section-splitting boundaries (the Figma equivalent of HTML section markers).
-2. **Extract design tokens** — `get_variable_defs` for colors, typography, spacing, radius. These map directly into `project.config.theme` in the JSON generator (colors → `colorPrimary`/`colorText`/…, type scale → `bodyBaseSize`/`h1BaseSize`/…). This is the biggest advantage over web scraping — tokens are explicit, not inferred.
-3. **Read layout + content per frame** — `get_design_context` on each section frame for layout structure, auto-layout direction, text content, and component usage. Auto-layout (horizontal/vertical, wrap, spacing) tells you composition (side-by-side vs stacked vs grid).
-4. **Export assets** — `download_assets` (or `get_screenshot` of leaf image nodes) to get real image/icon URLs. These populate the content manifest's image columns. There is no "video src" to extract like in HTML — flag motion/video intent from frame names or prototype notes instead.
-5. **Visual reference** — `get_screenshot` of each frame for the approval checkpoint and for verifying the clone preview matches.
-6. **Design system reuse** — `search_design_system` / `get_libraries` when the file uses a component library, to understand reusable component intent.
+1. **`get_design_context` on the page frame is the primary call.** One call returns reference code, a screenshot, asset URLs, the text/color styles used, and component descriptions. If the response is truncated, read the elided middle from the saved output before writing anything. If it asks about Code Connect, ask the user verbatim and follow the answer.
+2. **Harvest annotations.** Designer notes come back as `data-development-annotations` (semantics: H1/H2/H3, "not a heading, it's a link") and `data-interaction-annotations` (menus, link targets, hover behavior). Extract every one into an annotation table in the spec and map each to a requirement — they are easy to lose in a long response. Figma **comments** are not readable through MCP; ask the user for them if they matter.
+3. **Tokens.** `get_variable_defs` when the file uses variables; otherwise use the style list at the end of the `get_design_context` response. Map them into `project.config.theme` only for sitewide values; page-specific colors stay as section settings.
+4. **Structure.** `get_metadata` only to orient (pick nodes, find frames). Section boundaries are the top-level frames in the design context.
+5. **Interaction hints.** Layer names carry intent (e.g. `Grows Upward — Demo (hover to test)`, `Carousel Demo`, `Sort Dropdown (Grows Downwards)`). Record them; don't invent motion beyond them.
+6. **Assets.** The design context lists asset URLs (`figma.com/api/mcp/asset/...`). They **expire after ~7 days**. Download the bytes early; inspect them (some are flat color SVGs, decorative masks, or images meant to be shown flipped/cropped).
+7. **Global parts.** Header, nav, menu dropdowns and footer usually sit inside every frame. Treat them as layout/theme work (theme settings, Shopify menus, layout components), not as page sections.
+8. **Placeholders.** Designers leave gray boxes, sample product cards with `$00.00`, stray labels outside the canvas. Mark them `MISSING`/placeholder in the manifest and map the block to real data (collection products, Instagram feed) instead of reproducing the placeholders.
 
 ### Plugin fallback
 
@@ -56,17 +71,25 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 
 ## Workflow
 
-1. Read `.guides/brand-guideline.md` first. Brand guideline beats the design on visual conflicts.
-2. Ensure `sections.md` exists and is current before section matching.
-3. **Extract** the design with Figma MCP (steps 1–6 above). Save raw context/exports under `.figma/<file>-<frame>.json` (mirrors the cloning skill's `.firecrawl/`).
-4. **Map tokens** — turn `get_variable_defs` output into a theme token table for `project.config.theme`.
-5. **Build the content manifest** — required deliverable, same columns and rules as the cloning skill. Asset URLs come from `download_assets`, not from guessing.
-6. **Generate the clone preview route** at `app/routes/clone-preview.$page.tsx` — React + Tailwind, real assets, brand-adjusted tokens, `{/* === BLOCK NAME === */}` markers per frame.
-7. **User approval checkpoint — STOP and wait.** Present the preview URL + a summary (frame/section count, brand overrides, gaps). Do not proceed until the user explicitly approves. Iterate the preview on feedback.
-8. **Decompose & match** — split into section-sized blocks (one per top-level frame, usually). Classify media type, composition, layout mechanism, interaction. Then match against `sections.md` using the **layout matching priority** and **deep structural verification** defined in `cloning-websites-to-weaverse` (composition → layout → interaction → content model; then read the candidate section's source to verify aspect ratios, responsive images, split ratios, child types, animation, overlays). Classify as `REUSE_EXISTING`, `ADAPT_EXISTING`, or `CREATE_NEW_REUSABLE_SECTION`.
-9. **Implement** with clean schema boundaries: shared tokens → `app/styles/app.css`; sitewide controls → `app/weaverse/schema.server.ts`; section-local → section `schema`. Register new sections in `app/weaverse/components.ts`.
-10. **Hand off** the design spec + content manifest + token table to `generating-weaverse-project-json`.
-11. **Verify** desktop and mobile, then **delete** the temporary preview route once the Weaverse page matches the approved preview.
+1. **Preflight** (above). Read `.guides/brand-guideline.md`; ensure `sections.md` is current.
+2. **Extract** the design (steps above). Save the spec + manifest as `.figma/<brand>-<page>.md` (token table, annotation table, content manifest, gaps).
+3. **Build the content manifest** — same columns and rules as the cloning skill.
+4. **Generate the clone preview route** at `app/routes/clone-preview.$page.tsx` — one `$page` branch per page, React + Tailwind, real Figma assets, `{/* === BLOCK NAME === */}` markers. Header/footer are not part of it.
+5. **User approval checkpoint — STOP and wait.** Present the preview URL (the dev server port printed by `npm run dev`, not a guessed one) + block count, brand overrides, gaps. Iterate until the user approves.
+6. **Move assets to Shopify right after approval.** Crop responsive variants (desktop/mobile) and flip/rotate where the design does, then upload with `weaverse-content-api` → `upload`. Keep the returned media objects in `.clone/<page>/shopify-assets.json`. Never ship Figma asset URLs.
+7. **Decompose & match.** Classify every block (media type, composition, layout mechanism, interaction) and match it with the cloning skill's priority + deep structural verification. Also check each candidate's `enabledOn` against the page type from preflight.
+   - Parallelise the audit: one read-only scout per candidate section reporting SUPPORTED/GAP per requirement with file:line.
+   - Then one implementer per section, all under the same contract: every new setting defaults to the current rendering, no edits to the registry/`sections.md`/shared files outside their task, no build/format runs; the integrator owns registration, docs, lint and build.
+   - Prefer a small shared block (e.g. a heading + link header) over adding the same header to many sections by hand.
+8. **Integrate.** Register new sections, update `sections.md`, run the formatter on changed files only, typecheck and compare against the pre-change error baseline, build the way CI builds.
+9. **Generate the page JSON** with `generating-weaverse-project-json` (Shopify media objects, no default values, presets written explicitly), validate it.
+10. **Deliver through the Content API** (`weaverse-content-api`): `create-page` for CUSTOM/template pages (INDEX already exists), then one PATCH that relinks the root `main` and creates every item. Sitewide values go through `theme-update` (back up the old values first); menus go through the admin proxy (`menuUpdate`, back up the old menu). If the page needs code that isn't deployed yet, deploy right after (or tell the user the live page is broken until then).
+11. **Verify on the real route**, locally (restart the dev server after PATCHes) and on the deployed storefront:
+    - every section renders, one H1, no JS errors, no broken images, no horizontal overflow at 390px;
+    - counts come from the rendered DOM, not from loader JSON (the JSON can contain products the UI doesn't show);
+    - interactions work: hover effects, filters change the URL and the result count, sort, load more, menu links resolve;
+    - rounded/edge tiles aren't clipped at 1280–1440px widths.
+12. **Clean up and hand over.** Remove the page's preview branch, commit, push, watch the deploy workflow of *this* storefront (sibling-brand workflows in the same repo may fail for unrelated reasons). Report what Studio still needs (page SEO, missing collections/links, unpublished resources).
 
 ## Figma-specific differences from website cloning
 
@@ -89,6 +112,12 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 - **Re-deriving the matching rules** — the section-matching priority and deep schema verification live in `cloning-websites-to-weaverse`. Follow them; don't reinvent a looser version.
 - **Treating mobile/desktop frames as two pages** — they're responsive variants of the same section; map to `imageMobile`/`imageDesktop` or breakpoint logic, not separate pages.
 - **Leaving the preview route in the repo** — delete it after the Weaverse page is verified.
+- **Building before asking the page type** — a page built as a COLLECTION template had to be rebuilt as a CUSTOM page; the product grid section also had to change because the collection-only section can't run elsewhere.
+- **Debugging data with the wrong storefront in `.env`** — "collection not found" may just mean the local token belongs to another brand's channel. Check preflight item 2 before blaming publishing.
+- **Letting Figma asset URLs reach Weaverse** — they expire within days and some image transforms block them. Upload to Shopify first.
+- **Dropping annotations** — designer notes about heading levels, link targets, menus and hover behavior are requirements; keep the annotation table and tick it off at the end.
+- **Reproducing designer placeholders** — gray boxes and sample cards are stand-ins for real data, not content.
+- **Declaring success from a stale dev server** — after a PATCH, restart `npm run dev`; the old process can keep serving previous item data under the same ids.
 
 ## Related skills
 

@@ -14,6 +14,10 @@ Exit codes:
     2 - File not found or invalid JSON
 """
 
+# Keeps `dict | None`-style hints from being evaluated, so the validator runs on
+# the system Python of older macOS installs (3.8/3.9), not only 3.10+.
+from __future__ import annotations
+
 import json
 import re
 import sys

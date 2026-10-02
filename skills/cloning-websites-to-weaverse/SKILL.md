@@ -9,6 +9,8 @@ description: Use when recreating a reference website or brand hub in this Hydrog
 
 Use this repo-specific workflow to turn a reference website into maintainable Weaverse pages. Optimize for reusable sections, accurate section matching, and clear schema boundaries, not one-off screenshot cloning.
 
+**Source is a Figma file?** Use `figma-to-weaverse` instead. It replaces the Firecrawl extraction with Figma MCP and adds the Figma-specific steps; the section-matching, manifest, and preview rules below still apply.
+
 **Priority order:** brand guideline beats source website on visual conflicts. The source website drives page structure, content flow, interaction patterns, and merchandising logic.
 
 ## Conflict Rule
@@ -132,7 +134,7 @@ The clone preview route is the verification checkpoint. The design spec and cont
     - section-local content and controls -> section `schema`
 13. Register every new section in `app/weaverse/components.ts`.
 14. Verify desktop and mobile before expanding from the landing page to subpages.
-15. **Clean up the preview route** after the Weaverse page is verified and working. The preview route is a temporary artifact — keep it as a side-by-side reference during section building, but delete `app/routes/clone-preview.$page.tsx` once the final Weaverse-rendered page matches the approved preview.
+15. **Clean up the preview route** after the Weaverse page is verified and working. The preview route is a temporary artifact — keep it as a side-by-side reference during section building, then remove it once the final Weaverse-rendered page matches the approved preview. The route usually serves several pages through `$page`: remove only the finished page's branch and its data, and delete `app/routes/clone-preview.$page.tsx` (plus its entry in `app/routes.ts`) only when no page is left in it.
 
 ## Content Manifest
 
@@ -397,6 +399,9 @@ If any check fails, the section cannot be classified as `REUSE_EXISTING`. Reclas
 - **Using placeholder content in the preview route** — the preview must use real asset URLs from the content manifest, not lorem ipsum or stock images
 - **Forgetting section markers in the preview** — without `{/* === BLOCK NAME === */}` comments, the preview cannot serve as a splitting reference for section decomposition
 - **Leaving the preview route in the repo permanently** — it is a temporary artifact that must be deleted after the Weaverse page is verified
+- **Mapping onto a page-only section for a different page type** — check the candidate schema's `enabledOn` (e.g. `collection-filters` only runs on `COLLECTION` pages and reads the collection route's loader). On a CUSTOM landing page, use or build a section that loads its own data.
+- **Running the formatter on the whole app** — `biome check --write app/` reformats unrelated files and buries the real diff. Format only the files you changed, and revert formatter-only churn before committing.
+- **Changing a section's existing defaults while adapting it** — new settings must default to the current rendering; other pages already store data against the old schema.
 
 ## Rationalization Check
 

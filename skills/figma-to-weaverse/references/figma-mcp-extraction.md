@@ -14,9 +14,10 @@ maps onto the Weaverse JSON generator. Companion to this skill's `SKILL.md`.
 | `get_screenshot` | rendered image of a frame/node | approval checkpoint + preview verification |
 | `search_design_system` / `get_libraries` | library components in use | understanding reusable component intent |
 
-Read order for a page: `get_metadata` (structure) → `get_variable_defs` (tokens)
-→ `get_design_context` per frame (content/layout) → `download_assets` (assets)
-→ `get_screenshot` (visual check).
+Read order for a page: `get_design_context` on the page frame (content, layout,
+assets, styles, annotations — the primary call) → `get_variable_defs` when the
+file uses variables → `get_metadata` / `get_screenshot` only to orient or to
+check a single node.
 
 ## Token mapping → `project.config.theme`
 
@@ -64,10 +65,28 @@ multi-card frame to a Swiper-based section just because several cards are shown 
 that mismatch is the Figma equivalent of the website skill's "basically a grid"
 mistake.
 
+## Annotations
+
+`get_design_context` returns designer notes as data attributes on the nodes:
+
+- `data-development-annotations` — semantics: which text is the page `<h1>`,
+  section `<h2>`, card `<h3>`, and which heading-styled text is really a link.
+- `data-interaction-annotations` — behavior: hover menus and their full item
+  lists, link destinations ("Go directly to Disney page").
+
+Grep the saved response for both attributes and copy every one into the spec's
+annotation table. Figma comments are not exposed through MCP.
+
 ## Assets
 
-- Prefer `download_assets` for real exported files; record the returned URL in
-  the content manifest.
+- Asset URLs in `get_design_context` (`figma.com/api/mcp/asset/<id>/<hash>.<ext>`)
+  and `download_assets` exports **expire after ~7 days**. Download the bytes,
+  then upload them to Shopify (`weaverse-content-api` → `upload`) before they
+  go into any Weaverse data.
+- Inspect what you downloaded: a "photo" may be a flat-color SVG ring, a
+  decorative mask, or an image the design shows flipped or cropped. Prepare
+  those variants (desktop/mobile crops, flipped arcs) before uploading rather
+  than adding transform settings to sections.
 - For images placed via image fills, export the node with `get_screenshot` only
   as a fallback — a screenshot is not a production asset.
 - Figma has no runtime video. If a frame represents a video block (poster image,

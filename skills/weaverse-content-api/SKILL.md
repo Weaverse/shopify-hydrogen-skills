@@ -78,6 +78,26 @@ Authorization: Bearer <WEAVERSE_API_KEY>
 
 A successful patch invalidates caches and goes live through `api.weaverse.io` — the same path a Studio save takes.
 
+### Populate a new or empty page in one request
+
+A page created with `POST /pages` (or an empty template) has only a root `main` item. To build the whole page from an import-style JSON:
+
+1. Read the page and take the root `main` item id.
+2. Send one PATCH (≤100 items) with: the root `{ "id": <rootId>, "data": {}, "children": [...] }` (**`data` is required, even empty** — omitting it fails with `item.data must be an object`), plus every section/block as a new item with `id`, `type`, `data`, `children`.
+3. Expect `updated: 1, created: N, notFound: 0`.
+
+Use fresh ids per page (don't reuse ids from another page or an earlier test render). Content sent this way skips Studio's import, so schema **presets are not applied** — every non-default value must be in `data`.
+
+### Theme settings
+
+`PATCH /projects/:projectId/theme-settings` with `{ "theme": { ...changedKeys } }` shallow-merges top-level theme keys and records a restorable ThemeVersion. Read the current values first (`GET .../theme-settings`) and keep them as a backup — the response returns the full merged theme and `updatedKeys`. Theme keys are global: a product-card key restyles every product card on the site.
+
+### What the Content API cannot do
+
+- Set page SEO (title/description) — set it in Studio.
+- Publish Shopify resources to a sales channel — the proxy token lacks `read_publications`/`write_publications`.
+- Create projects.
+
 ### Page addressing
 
 Pages are addressed by Prisma page type + handle:
@@ -118,6 +138,8 @@ Reference implementation in the builder repo: `app/backend/admin/file.server.ts`
 
 > Alternatively, when a connected Shopify MCP is available, its image-upload / `graphql_mutation` tools do the same job without the proxy. Use whichever is connected.
 
+The helper script's `upload` command runs all four steps and prints the CDN URL, id and size per file. Send a `User-Agent` header on proxy calls — requests without one are rejected with `403`. The proxy is a normal Admin GraphQL endpoint, so other admin mutations the token allows (e.g. `menuUpdate` for navigation menus, `fileDelete`) also work through it.
+
 ## Helper script
 
 `scripts/weaverse_content_api.mjs` wraps auth and the common calls. It reads `WEAVERSE_API_KEY` from the environment.
@@ -128,10 +150,14 @@ export WEAVERSE_API_KEY=...
 node scripts/weaverse_content_api.mjs projects
 node scripts/weaverse_content_api.mjs languages <projectId>
 node scripts/weaverse_content_api.mjs theme <projectId>
+node scripts/weaverse_content_api.mjs theme-update <projectId> <theme.json>     # { "key": value, ... }
 node scripts/weaverse_content_api.mjs pages <projectId> [type]
 node scripts/weaverse_content_api.mjs page <projectId> <type> [handle] [locale]   # reads with ?locale
-node scripts/weaverse_content_api.mjs update <projectId> <type> <handle> <patch.json>
+node scripts/weaverse_content_api.mjs create-page <projectId> <type> <handle> [name]
+node scripts/weaverse_content_api.mjs update <projectId> <type> [handle] <patch.json>   # omit handle for INDEX & other singletons
 node scripts/weaverse_content_api.mjs delete <projectId> <type> <handle...>
+node scripts/weaverse_content_api.mjs delete-ids <projectId> <pageId...>      # projects without languages
+node scripts/weaverse_content_api.mjs upload <file...>                        # → Shopify Files, prints CDN URLs
 ```
 
 Use it to inspect a project quickly and to apply patch files. For anything the script doesn't cover, call the REST endpoints directly or read `openapi.json`.
@@ -151,6 +177,10 @@ Use it to inspect a project quickly and to apply patch files. For anything the s
 - **Hardcoding the token or using `?apiKey=`** — use `Authorization: Bearer` from an env var.
 - **Replacing whole `data` objects** — updates shallow-merge. Send only changed fields; don't resend the entire `data` and risk wiping nested values you didn't read.
 - **Putting a non-Shopify URL into a media field after "upload"** — finish the `fileCreate` step and use the returned Shopify CDN URL, not the staged/temporary `resourceUrl`.
+- **Sending `locale: ""` to bulk delete** — rejected (`"locale" cannot be an empty string`). For a project with no languages, delete by `pageIds` (`delete-ids`).
+- **Trusting a local dev render right after a PATCH** — a running Hydrogen dev server can keep a cached copy of an item id it rendered before, so the page still shows old data. Restart the dev server (or verify on the deployed storefront) before concluding the patch didn't apply.
+- **Patching a live page with sections the deployed code doesn't have yet** — new section types or settings render broken on production until the code is deployed. Deploy first, or patch right before deploying and say so.
+- **Changing global theme keys without a backup** — save the current values from `GET theme-settings` before a `theme-update`.
 
 ## Related skills
 

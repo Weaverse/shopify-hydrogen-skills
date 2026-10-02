@@ -80,6 +80,23 @@ With `locale`, also returns `staticTranslations` (merged static keys for that lo
   "staticTranslations": { "cart.title": "Panier" } }
 ```
 
+### Update theme settings
+```
+PATCH /projects/:projectId/theme-settings      (POST also accepted)
+```
+Shallow-merges top-level keys over the project's own theme; nested objects are
+replaced wholesale (read them first). Writes the project's own config only and
+records a ThemeVersion snapshot (restorable in Studio). Body must be a
+non-empty `theme` object:
+```json
+{ "theme": { "headerText": "#1d1b20", "footerBgColor": "#ed7623" } }
+```
+Response (`updatedKeys` is empty when nothing changed — no cache invalidation then):
+```json
+{ "object": "theme_settings_update", "projectId": "clm123",
+  "updatedKeys": ["headerText", "footerBgColor"], "theme": { "...": "full merged theme" } }
+```
+
 ### List pages
 ```
 GET /projects/:projectId/pages?type=&locale=&limit=&after=
@@ -157,7 +174,7 @@ A live assignment already existing for this handle/type/locale returns `409 CONF
 ```
 DELETE /projects/:projectId/pages      (POST also accepted)
 ```
-Soft-deletes pages. Provide **either** `pageIds` **or** `handles` (with `type`; `locale` optional, defaults to the project's stored default locale). Max **500** targets.
+Soft-deletes pages. Provide **either** `pageIds` **or** `handles` (with `type`; `locale` optional, defaults to the project's stored default locale). Max **500** targets. An empty-string `locale` is rejected (`400 INVALID_PARAMS`) — omit it, or delete by `pageIds` when the project has no languages.
 
 By id:
 ```json
