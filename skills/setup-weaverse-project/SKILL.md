@@ -90,6 +90,14 @@ Rules:
 - If the CLI rejects a theme (for example an old/nonexistent `blank` handle), show the supported template list and ask the user for the replacement. Do not silently switch themes.
 - If `--no-install` is not supported by the installed CLI, let the CLI install dependencies, then continue from the created folder.
 - Do not hand-roll a GitHub downloader. Use the CLI first; use clone/degit only if the CLI is unavailable and the theme repo exists.
+- After a clone/degit fallback, strip what the CLI would have removed, then start fresh history:
+
+  ```bash
+  rm -rf .git .github .weaverse
+  git init
+  ```
+
+  `.git` is the theme repo's history (its `origin` would break the GitHub push in Phase 3), `.github` holds the theme's internal workflows (Oxygen deploy, CI, code review) that fail without Weaverse's secrets, and `.weaverse` holds internal specs.
 
 ---
 
