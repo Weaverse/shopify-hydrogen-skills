@@ -54,7 +54,7 @@ The curated guides below cover specific version jumps with detailed diffs and We
 npx shopify hydrogen upgrade
 ```
 
-This CLI diffs your project against the latest Hydrogen skeleton and applies changes interactively.
+This CLI bumps and installs the required dependencies automatically, then generates a Markdown file listing the required source changes — apply those manually (or feed the file to your agent), then verify. It does not edit your source files itself.
 
 ### 2. Find the right guide above
 

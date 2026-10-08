@@ -83,7 +83,7 @@ import {createRequestHandler} from '@shopify/hydrogen';
 
 const handleRequest = createRequestHandler({
   build: serverBuild,
-  mode: process.env.NODE_MODE,
+  mode: process.env.NODE_ENV,
   getLoadContext: () => hydrogenContext, // must include `storefront`
 });
 ```
@@ -165,7 +165,7 @@ Prefer the official CLI to hand-editing:
 npx shopify hydrogen upgrade
 ```
 
-It diffs your project against the current skeleton and applies changes interactively. Review its output against Steps 2–5 — it updates template files, not custom code.
+It bumps and installs the required dependencies automatically, then generates a Markdown file listing the required source changes — it does **not** edit your source files. Apply Steps 2–5 yourself (the generated file is a good checklist and can be fed to your agent); without the Step 2 proxy migration, consent and analytics stay off after deploy.
 
 ### Rollback
 

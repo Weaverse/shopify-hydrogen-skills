@@ -221,7 +221,7 @@ export WEAVERSE_API_KEY=...
 node scripts/weaverse_content_api.mjs projects
 node scripts/weaverse_content_api.mjs languages <projectId>
 node scripts/weaverse_content_api.mjs theme <projectId>
-node scripts/weaverse_content_api.mjs theme-update <projectId> <theme.json>     # flat { "key": value }; the script wraps it in { theme }
+node scripts/weaverse-content-api.mjs theme-update <projectId> <theme.json>     # flat { "key": value }; the script wraps it in { theme } and replays the current revision as expectedRevision (409 STALE_PROJECT on a concurrent change)
 node scripts/weaverse_content_api.mjs pages <projectId> [type]
 node scripts/weaverse_content_api.mjs page <projectId> <type> [handle] [locale]   # reads with ?locale
 node scripts/weaverse_content_api.mjs create-page <projectId> <type> <handle> [name]
