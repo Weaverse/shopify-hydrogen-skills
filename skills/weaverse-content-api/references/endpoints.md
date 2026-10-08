@@ -304,6 +304,6 @@ GET/POST /projects/{projectId}/assignments            (mixed; destructive ops ne
 ## Notes
 
 - Live writes (`PATCH` pages, theme-settings, applied translations) run on the primary region and invalidate caches; read-replica requests are transparently replayed.
-- Drafts and schedules only stage content (`content:write`, never live). The promotion calls — `publish-versions`, `publish-now`, `restore` — are themselves immediate live writes gated on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
+- Drafts only stage content (`content:write`, never live). Schedule management — `schedule`, reschedule, cancel — needs `content:publish` even though the publication is future-dated. The promotion calls — `publish-versions`, `publish-now`, `restore` — are immediate live writes gated on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
 - Token auth is cached ~5 minutes — a freshly revoked token may keep working briefly.
 - `POST` is accepted for update and delete because some clients/CDNs strip `PATCH`/`DELETE` bodies.
