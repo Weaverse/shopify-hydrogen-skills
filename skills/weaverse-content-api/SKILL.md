@@ -17,7 +17,7 @@ Read and edit Weaverse content (projects, pages, theme settings, translations) o
 **Not every write goes live. The API has three write models:**
 
 1. **Live edits** — `PATCH .../pages/:type/*handle` (item data), `PATCH .../theme-settings`, and translation writes apply immediately and invalidate caches, going live through `api.weaverse.io` — the same path a Studio save takes.
-2. **Draft → explicit publish** — page drafts (`GET/PUT/DELETE .../page-drafts/:pageId`), global-section drafts (`op=save-draft`/`discard-draft`), and versions (`schedule`, `publish-now`, `restore`) stage changes that stay invisible until a separate publish step runs. `content:write` never publishes; publishing needs `content:publish`.
+2. **Staged writes + explicit promotion** — page drafts (`GET/PUT/DELETE .../page-drafts/:pageId`), global-section drafts (`op=save-draft`/`discard-draft`), and scheduled versions stage changes that stay invisible until a **separate promotion call** runs: `POST /publish-versions/{versionId}` (publish a saved draft), `POST /versions/{versionId}/publish-now` (publish a scheduled version **immediately**), or `POST /versions/{versionId}/restore` (**immediately overwrites live content** — a confirm-gated rollback). Those three promotion calls are themselves live writes: `content:write` never reaches them; each needs `content:publish` (restore also `content:delete`).
 3. **Project lifecycle** — `POST /projects` with `op=create|copy|delete|set-settings|purge-cache` (scope `project:manage`; delete also needs `content:delete` + `confirm`). Projects **can** be created through the API — a blank or theme-seeded project, or a background copy of this shop's own or a public demo-store project.
 
 So the lifecycle is:
@@ -71,7 +71,7 @@ The `bearerAuth` scheme accepts a shop API key, a **scoped API key**, a **delega
 | `translations:read` / `translations:write` | Translation-unit routes only; never general content access |
 
 - A missing scope on a scoped credential returns `403 INSUFFICIENT_SCOPE` with nothing written.
-- A **legacy unscoped key** keeps read/write/translation baseline access and every pre-scope endpoint, but never gains publish/delete/project-manage implicitly.
+- A **legacy unscoped key** keeps read/write/translation baseline access and every pre-scope endpoint, but never gains publish/delete/project-manage implicitly — **except its historical bulk page-delete access** (`DELETE .../pages` still works for keys minted before scopes existed). Treat such a key as destructive-capable and replace it with a scoped key.
 - **Delegated (MCP OAuth) tokens must send revision tokens on writes**: `expectedUpdatedAt` on page patches, `expectedRevision` on theme-settings — omitted → `428 PRECONDITION_REQUIRED`. API keys may omit them, but sending them is still the safe default.
 - A scoped key can be minted task-tight (e.g. `content:read` + `translations:write` for a translation agent) so a leaked or runaway script cannot delete or publish. Prefer that for automation.
 
