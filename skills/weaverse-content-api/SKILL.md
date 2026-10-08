@@ -17,7 +17,7 @@ Read and edit Weaverse content (projects, pages, theme settings, translations) o
 **Not every write goes live. The API has three write models:**
 
 1. **Live edits** — `PATCH .../pages/:type/*handle` (item data), `PATCH .../theme-settings`, and translation writes apply immediately and invalidate caches, going live through `api.weaverse.io` — the same path a Studio save takes.
-2. **Staged writes + explicit promotion** — page drafts (`GET/PUT/DELETE .../page-drafts/:pageId`), global-section drafts (`op=save-draft`/`discard-draft`), and scheduled versions stage changes that stay invisible until a **separate promotion call** runs: `POST /publish-versions/{versionId}` (publish a saved draft), `POST /versions/{versionId}/publish-now` (publish a scheduled version **immediately**), or `POST /versions/{versionId}/restore` (**immediately overwrites live content** — a confirm-gated rollback). Those three promotion calls are themselves live writes: `content:write` never reaches them; each needs `content:publish` (restore also `content:delete`).
+2. **Staged writes + explicit promotion** — only page drafts (`GET/PUT/DELETE .../page-drafts/:pageId`) and global-section drafts (`op=save-draft`/`discard-draft`) stay invisible until promoted. Promotion is a live write: `POST /publish-versions/{versionId}` (publish a saved draft), `POST /versions/{versionId}/publish-now` (publish a scheduled version **immediately**), or `POST /versions/{versionId}/restore` (**immediately overwrites live content** — a confirm-gated rollback). `POST /versions/{versionId}/schedule` is **not** inert either: it commits an automatic live change at `publishAt` with no further call. All of these need `content:publish` (restore also `content:delete`).
 3. **Project lifecycle** — `POST /projects` with `op=create|copy|delete|set-settings|purge-cache` (scope `project:manage`; delete also needs `content:delete` + `confirm`). Projects **can** be created through the API — a blank or theme-seeded project, or a background copy of this shop's own or a public demo-store project.
 
 So the lifecycle is:
@@ -64,7 +64,7 @@ The `bearerAuth` scheme accepts a shop API key, a **scoped API key**, a **delega
 | Scope | Grants |
 |---|---|
 | `content:read` | Read projects, pages, theme settings, versions, drafts, translation units |
-| `content:write` | Save drafts and non-destructive edits (items, metadata, SEO, assignments, languages, glossary). **Never publishes or deletes** |
+| `content:write` | Save drafts and non-destructive edits (items, metadata, SEO, assignments, languages, glossary). Cannot call the explicit publish/schedule/restore/delete endpoints — **but its live edits (`PATCH .../pages/...`, page create) reach the storefront immediately** |
 | `content:publish` | Publish drafts, schedule/reschedule/cancel publications, restore versions, publish global sections |
 | `content:delete` | Delete pages/global sections/languages/static keys, override reverts; required *with* `project:manage` for project deletion |
 | `project:manage` | Create/copy/delete projects, settings, variants, hierarchy, backups, previews, hostname policy |
@@ -137,10 +137,10 @@ When an edit must be reviewed or gated instead of going live immediately, use dr
 
 - **List** — `GET /projects/:projectId/versions?pageId=<id>` (that page's versions), `?kind=theme` (theme versions), `?kind=retired-pages` (retired page versions, recovery), default `?kind=scheduled` (current schedule, page + theme).
 - **Read one** — `GET /versions/:versionId?type=page|theme&projectId=<id>`.
-- **Schedule** — `POST /versions/:versionId/schedule` `{ projectId, type, publishAt }` (+ `replaceScheduledVersionId` for page versions; rejected 400 for theme). `publishAt` must be future; a page/project already having a scheduled version is `409`, nothing changed.
+- **Schedule** — `POST /versions/:versionId/schedule` `{ projectId, type, publishAt }` (+ `replaceScheduledVersionId` for page versions; rejected 400 for theme). The version **goes live automatically at `publishAt`** — no further call; treat scheduling as approving a live change. `publishAt` must be future; a page/project already having a scheduled version is `409`, nothing changed.
 - **Move / cancel** — `PATCH /versions/:versionId` (reschedule) and `DELETE /versions/:versionId` (cancel) on scheduled publications only — a version no longer scheduled is `409`/404.
 - **Publish now** — `POST /versions/:versionId/publish-now` `{ projectId, type }`.
-- **Restore** — `POST /versions/:versionId/restore` `{ projectId, type, confirm: "<versionId>" }`. **Restoring overwrites live content**, so it needs both `content:publish` and `content:delete` plus the confirm string. Treat it as a merchant-approved rollback, not a routine edit.
+- **Restore** — `POST /versions/:versionId/restore` `{ projectId, type, confirm: "<versionId>" }`. **Restoring overwrites live content**, so it needs both `content:publish` and `content:delete` plus the confirm string. Treat it as a merchant-approved rollback, not a routine edit. On `409` (concurrent claim, nothing changed) never replay: re-read the version and live target, and reconfirm with the merchant for the current state first.
 
 ## Translations
 
@@ -235,7 +235,7 @@ Use it to inspect a project quickly and to apply patch files. For anything the s
 
 ## Red Flags
 
-- **Assuming a write published** — drafts (`PUT page-drafts`, global-section `save-draft`) never touch live; `content:write` never publishes or deletes. Publishing is always a separate explicit call needing `content:publish`.
+- **Assuming a write is staged** — only draft saves (`PUT page-drafts`, global-section `save-draft`) stay off live. Live item `PATCH` and `POST /pages` under plain `content:write` change the storefront immediately; `schedule` goes live automatically at `publishAt`; `publish-versions`/`publish-now`/`restore` go live at once.
 - **Creating/copying/deleting a project without the merchant's go-ahead** — lifecycle ops (`project:manage`, delete + `content:delete` + `confirm`) change account-level state. `op=copy` returns `202` and keeps running in the background; observe completion by listing the target's pages.
 - **Restoring a version casually** — `POST /versions/:id/restore` overwrites live content (needs `content:publish` + `content:delete` + `confirm="<versionId>"`). Merchant-approved rollback only.
 - **Retrying a `409 STALE_PAGE`/`STALE_PROJECT`/`STALE_TRANSLATION` refusal verbatim** — the resource moved. Re-read, rebuild the edit on top of the newer content, then write. `failedIds` in a `page_update` means unconfirmed outcomes — re-read those items before assuming anything.

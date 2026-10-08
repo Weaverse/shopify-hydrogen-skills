@@ -138,7 +138,7 @@ Separate from the mandatory changes above — adopt only when touching that area
 
 ### Weaverse projects
 
-No Weaverse-specific changes are required by these releases: nothing in the official Hydrogen changelogs touches the Weaverse SDK's integration surface (`@shopify/hydrogen` peer ranges, `createRequestHandler` proxy, and the API version bump above are the whole story). Weaverse storefronts still must do Steps 1–4 — the mandatory proxy especially, since the Weaverse loader provides the `storefront` context the handler now requires. Verify with the sequence below before deploying.
+No additional Weaverse-specific migration was identified in the reviewed sources (the official Hydrogen and skeleton changelogs); that is not a compatibility guarantee. Weaverse storefronts still must do Steps 1–4 — the mandatory proxy especially, since the handler now throws without a `storefront` in the load context — and must verify their own Weaverse integration (SDK version's peer ranges, loaders, preview/editor) with the baseline and build sequence below before deploying.
 
 ### Step 7: Verify
 

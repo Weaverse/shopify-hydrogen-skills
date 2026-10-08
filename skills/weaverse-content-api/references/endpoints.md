@@ -236,7 +236,7 @@ PUT    /versions/{versionId}                 replace a pending version's content
 
 - Default listing (`kind=scheduled`) is the current schedule (page + theme); `pageId=` lists that page's versions; `kind=theme` / `kind=retired-pages` (recovery) for the others.
 - `publishAt` must be in the future; a page/project already having a scheduled version, or a lost replacement race, is `409` with nothing changed. Theme versions have no atomic replacement — cancel first (400 otherwise).
-- `restore` overwrites live content: needs `content:publish` + `content:delete` and `confirm` equal to the versionId. A concurrent claim is `409` — retry.
+- `restore` overwrites live content: needs `content:publish` + `content:delete` and `confirm` equal to the versionId. A concurrent claim is `409` with nothing changed — **do not replay it**: re-read the version and the current live target, reassess whether that rollback is still wanted, and get merchant confirmation for the exact current state before any new attempt.
 - `PUT` replaces a pending (non-draft) version's content: `type=page` full snapshot fenced on the page revision inside it; `type=theme` fenced on `expectedProjectUpdatedAt`; `type=deferred-page` recaptures a catch-all version with `expectedScheduleRevision`. Draft versions are refused `409 CONFLICT`.
 
 ## Translations
@@ -304,6 +304,6 @@ GET/POST /projects/{projectId}/assignments            (mixed; destructive ops ne
 ## Notes
 
 - Live writes (`PATCH` pages, theme-settings, applied translations) run on the primary region and invalidate caches; read-replica requests are transparently replayed.
-- Drafts only stage content (`content:write`, never live). Schedule management — `schedule`, reschedule, cancel — needs `content:publish` even though the publication is future-dated. The promotion calls — `publish-versions`, `publish-now`, `restore` — are immediate live writes gated on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
+- Only draft saves stage content (page-draft `PUT`, global-section `save-draft`). Plain `content:write` live edits (item `PATCH`, `POST /pages`) reach the storefront immediately. `schedule` (with reschedule/cancel, all `content:publish`) commits an automatic live change at `publishAt`. `publish-versions`, `publish-now`, `restore` are immediate live writes on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
 - Token auth is cached ~5 minutes — a freshly revoked token may keep working briefly.
 - `POST` is accepted for update and delete because some clients/CDNs strip `PATCH`/`DELETE` bodies.

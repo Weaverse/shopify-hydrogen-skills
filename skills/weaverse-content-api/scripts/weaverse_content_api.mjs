@@ -24,8 +24,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 
-// WEAVERSE_CONTENT_API_BASE overrides the API root for local contract testing only.
-const BASE = process.env.WEAVERSE_CONTENT_API_BASE ?? "https://studio.weaverse.io/api/v1/content";
+const BASE = "https://studio.weaverse.io/api/v1/content";
 const ADMIN_GRAPHQL = "https://studio.weaverse.io/api/admin-graphql";
 const KEY = process.env.WEAVERSE_API_KEY;
 // The admin proxy rejects requests without a User-Agent (403); send one everywhere.
