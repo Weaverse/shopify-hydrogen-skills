@@ -304,6 +304,6 @@ GET/POST /projects/{projectId}/assignments            (mixed; destructive ops ne
 ## Notes
 
 - Live writes (`PATCH` pages, theme-settings, applied translations) run on the primary region and invalidate caches; read-replica requests are transparently replayed.
-- Only draft saves stage content (page-draft `PUT`, global-section `save-draft`). Plain `content:write` live edits (item `PATCH`, `POST /pages`) reach the storefront immediately. `schedule` (with reschedule/cancel, all `content:publish`) commits an automatic live change at `publishAt`. `publish-versions`, `publish-now`, `restore` are immediate live writes on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
+- Only draft saves (page-draft `PUT`, global-section `save-draft`) and pending-version `PUT /versions/{id}` stage content; a replaced scheduled version still goes live at its `publishAt`. Plain `content:write` live edits (item `PATCH`, `POST /pages`) reach the storefront immediately. `schedule` (with reschedule/cancel, all `content:publish`) commits an automatic live change at `publishAt`. `publish-versions`, `publish-now`, `restore` are immediate live writes on `content:publish` (restore and project delete additionally `content:delete`); lifecycle ops need `project:manage`.
 - Token auth is cached ~5 minutes — a freshly revoked token may keep working briefly.
 - `POST` is accepted for update and delete because some clients/CDNs strip `PATCH`/`DELETE` bodies.
