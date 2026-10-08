@@ -56,7 +56,7 @@ Peer dependencies of `@shopify/hydrogen@2026.4.7` (from its published `package.j
 ```diff
 // dependencies
 - "@shopify/hydrogen": "^2026.1.0",
-+ "@shopify/hydrogen": "^2026.4.7",
++ "@shopify/hydrogen": "2026.4.7",
 - "react-router": "7.12.0",
 + "react-router": "7.16.0",
 - "react-router-dom": "7.12.0",
@@ -69,7 +69,7 @@ Peer dependencies of `@shopify/hydrogen@2026.4.7` (from its published `package.j
 + "@react-router/fs-routes": "7.16.0",
 ```
 
-Then `npm install` (or your package manager's install). `@shopify/hydrogen-react` is a direct dependency of `@shopify/hydrogen` — it moves to 2026.4.4 automatically; don't pin it yourself unless you import it directly.
+Pin `@shopify/hydrogen` exactly (as the official skeleton does): a `^2026.4.7` range would let a fresh install pick up a newer release this guide doesn't cover. Then `npm install` (or your package manager's install). `@shopify/hydrogen-react` is a direct dependency of `@shopify/hydrogen` — it moves to 2026.4.4 automatically; don't pin it yourself unless you import it directly.
 
 ### Step 2: Make the Storefront API proxy unconditional (2026.4.0 — mandatory)
 
