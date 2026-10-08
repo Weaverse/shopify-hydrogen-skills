@@ -25,8 +25,8 @@ This upgrade spans **12 releases**: 2026.1.1 → 2026.1.2 → 2026.1.3 → 2026.
 | **2026.4.3** | Patch | Cart/Image/redirect fixes; React Router peer `~7.16.0`, skeleton defaults to 7.16.0 |
 | **2026.4.4** | Patch | PerfKit resource-timing sampling 100 → 10 |
 | **2026.4.5** | Patch | Customer-account login/session resilience fixes |
-| **2026.4.6** | Patch (behavioral) | **Consent/analytics move to the Customer Privacy API** — requires the same-origin Storefront API proxy; deprecated consent/cookie options become no-ops. See the [tracking-cookie deprecation notice](https://shopify.dev/changelog/posts/tracking-cookie-deprecation-hydrogen) |
-| **2026.4.7** | Patch | Hydration fix for `Analytics.Provider` deferred state updates; `og:image:type` fallback fix |
+| **2026.4.6** | Patch (behavioral) | **Consent/analytics move to the Customer Privacy API** — requires the same-origin Storefront API proxy; deprecated consent/cookie options become no-ops; `og:image:type` fallback fix for query-string URLs. See the [tracking-cookie deprecation notice](https://shopify.dev/changelog/posts/tracking-cookie-deprecation-hydrogen) |
+| **2026.4.7** | Patch | Hydration fix for `Analytics.Provider` deferred state updates; `publish()` from `useAnalytics()` re-checks consent (revoked-consent events no longer reach subscribers) |
 
 **Mandatory work concentrates in 2026.4.0 (proxy + API version) and 2026.4.6 (consent/analytics).** Everything else rides along as framework patches.
 
