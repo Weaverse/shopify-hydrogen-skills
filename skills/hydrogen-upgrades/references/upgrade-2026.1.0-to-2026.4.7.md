@@ -162,10 +162,10 @@ Also verify in the built app that `/api/2026-04/graphql.json` (same-origin Store
 Prefer the official CLI to hand-editing:
 
 ```bash
-npx shopify hydrogen upgrade
+npx shopify hydrogen upgrade --version 2026.4.7
 ```
 
-It bumps and installs the required dependencies automatically, then generates a Markdown file listing the required source changes — it does **not** edit your source files. Apply Steps 2–5 yourself (the generated file is a good checklist and can be fed to your agent); without the Step 2 proxy migration, consent and analytics stay off after deploy.
+Pin `--version` so the run matches this guide — without it the command targets the latest release, which may be newer than what is documented here. It bumps and installs the required dependencies automatically, then generates a Markdown file listing the required source changes — it does **not** edit your source files. Apply Steps 2–5 yourself (the generated file is a good checklist and can be fed to your agent); without the Step 2 proxy migration, consent and analytics stay off after deploy.
 
 ### Rollback
 
