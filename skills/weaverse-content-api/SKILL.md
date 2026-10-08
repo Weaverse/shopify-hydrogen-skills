@@ -166,7 +166,7 @@ Two protocols; both write only `Translation` rows — base page content, items, 
 ### What the Content API cannot do
 
 - Publish Shopify resources to a sales channel — the proxy token lacks `read_publications`/`write_publications`.
-- Write project hierarchy/market settings over an API key — `PATCH /projects/:projectId` accepts `name` only; the rest is Studio/Dashboard domain.
+- Set market settings over an API key — `PATCH /projects/:projectId` accepts `name` only. (Hierarchy — variants, parent link/detach, page overrides — is writable through the dedicated `POST /projects/:projectId/hierarchy` route under `project:manage`, destructive ops confirm-gated; see `references/endpoints.md`.)
 
 ### Page addressing
 
