@@ -30,7 +30,7 @@ For manual per-agent setup, see [INSTALL.md](INSTALL.md).
 | [`cloning-websites-to-weaverse`](./skills/cloning-websites-to-weaverse/SKILL.md) | Recreate reference websites as Hydrogen + Weaverse pages with preview checkpoints and section mapping | Cloning a site or brand hub into Weaverse |
 | [`figma-to-weaverse`](./skills/figma-to-weaverse/SKILL.md) | Turn a Figma design into Weaverse sections via Figma MCP — token mapping, content manifest, preview checkpoint, Playwright visual check against Figma until PASS | Building a storefront from a Figma file |
 | [`generating-weaverse-project-json`](./skills/generating-weaverse-project-json/SKILL.md) | Generate import-ready Weaverse project export JSON from section plans, specs, or existing exports | Building Weaverse import files |
-| [`weaverse-content-api`](./skills/weaverse-content-api/SKILL.md) | Read/update live Weaverse content over the REST Content API — bulk edits, AI content pipelines, Shopify resource upload | Updating a project after it exists |
+| [`weaverse-content-api`](./skills/weaverse-content-api/SKILL.md) | Read/update Weaverse content over the REST Content API — live item edits, drafts and explicit publish/schedule/restore, translations, project lifecycle, Shopify resource upload | Updating a project's content, publishing flow, or translations via API |
 | [`hydrogen-analytics-tracking`](./skills/hydrogen-analytics-tracking/SKILL.md) | End-to-end tracking on Hydrogen — GTM, GA4 (browser + Measurement Protocol), Meta Pixel + CAPI, Google Ads, Consent Mode v2, CSP, Oxygen FPC, Weaverse webhook forwarding | Implementing analytics/conversion tracking on a Hydrogen storefront |
 | [`hydrogen-markets-localization`](./skills/hydrogen-markets-localization/SKILL.md) | End-to-end Shopify Markets localization — canonical market config, locale routing, Weaverse translations, RTL, cart/account/checkout continuity, SEO, and production readback | Adding or reviewing markets, locales, translations, hreflang, or localized commerce flows |
 
@@ -46,7 +46,7 @@ figma-to-weaverse             ┘                                    └─→  
                                                                          bulk edits, Shopify resource upload)
 ```
 
-Initial structure is created by importing the generated JSON (or page-by-page via `POST /projects/:projectId/pages`). Everything after — copy, images, localization, bulk edits — goes through the Content API, which updates existing items, adds new typed items, relinks children, and creates/deletes pages.
+Initial structure is created by importing the generated JSON, page-by-page via `POST /projects/:projectId/pages`, or as a whole project via the Content API's project lifecycle. Everything after — copy, images, localization, bulk edits, staged draft→publish flows — goes through the Content API, which updates existing items, adds new typed items, relinks children, creates/deletes pages, and restores versions.
 
 ---
 
@@ -105,7 +105,7 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │
 │   ├── hydrogen-upgrades/         # Framework version migrations
 │   │   ├── SKILL.md
-│   │   └── references/            # 2024.4.7 → … → 2026.1.0
+│   │   └── references/            # 2024.4.7 → … → 2026.4.7
 │   │
 │   ├── theme-update/              # Pilot theme updater
 │       ├── SKILL.md

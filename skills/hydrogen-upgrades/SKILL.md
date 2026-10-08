@@ -44,13 +44,14 @@ The curated guides below cover specific version jumps with detailed diffs and We
 | [2025.1.3 → 2025.1.4](./references/upgrade-2025.1.3-to-2025.1.4.md) | Session logout fix, `VariantSelector` deprecation, product query updates, `ProductForm` refactor |
 | [2025.5.0 → 2025.7.0](./references/upgrade-2025.5.0-to-2025.7.0.md) | **Major** — React Router 7.9.x migration, context creation, entry point updates |
 | [2025.7.0 → 2026.1.0](./references/upgrade-2025.7.0-to-2026.1.0.md) | **Major** — `@react-router` 7.12, `@shopify/hydrogen` 2026.1.0, Storefront API 2026-01, new cart mutations |
+| [2026.1.0 → 2026.4.7](./references/upgrade-2026.1.0-to-2026.4.7.md) | **Major** — Storefront API 2026-04, mandatory same-origin Storefront API proxy, Customer Privacy API consent migration, React Router ~7.16 |
 
 ## Upgrade Process
 
 ### 1. Use the official upgrade tool first
 
 ```bash
-npx @shopify/upgrade
+npx shopify hydrogen upgrade
 ```
 
 This CLI diffs your project against the latest Hydrogen skeleton and applies changes interactively.
