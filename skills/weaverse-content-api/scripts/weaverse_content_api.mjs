@@ -230,10 +230,12 @@ switch (cmd) {
     const [projectId, themeFile] = rest;
     if (!projectId || !themeFile) usage("theme-update needs <projectId> <theme.json>");
     const theme = JSON.parse(await readFile(themeFile, "utf8"));
-    // Shallow merge of top-level keys; nested objects are replaced wholesale.
+    // Revision CAS: replay the GET revision so a concurrent Studio change is
+    // refused with 409 STALE_PROJECT instead of being overwritten.
+    const current = await call(`/projects/${enc(projectId)}/theme-settings`);
     out = await call(`/projects/${enc(projectId)}/theme-settings`, {
       method: "PATCH",
-      body: { theme },
+      body: { theme, expectedRevision: current.revision ?? null },
     });
     break;
   }
