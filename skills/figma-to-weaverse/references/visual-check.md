@@ -39,6 +39,11 @@ normalises size. Mobile references only exist if the designer made mobile
 frames — add them as `referenceMobile`. Without one, mobile gets the hard
 checks only.
 
+For each interaction backed by a component state, also save the state
+variant's screenshot (e.g. the `State=Hover` node) as
+`.figma/ref/<page>/<interaction>.png`. Crop the reference to the same element
+the interaction captures (the button, the card, the open menu).
+
 ## Spec file — `.figma/<page>.visual.json`
 
 ```json
@@ -69,6 +74,41 @@ checks only.
       "mode": "structure",
       "note": "Figma grid is placeholder cards; products come from the collection."
     }
+  ],
+  "interactions": [
+    {
+      "name": "cta-hover",
+      "block": "characters",
+      "action": "hover",
+      "target": "[data-wv-id='d0057fe6-...'] a.button",
+      "source": "variant: Button State=Hover (1057:7012)",
+      "viewports": ["desktop"],
+      "expect": { "style": { "background-color": "#FF6600" } },
+      "reference": "ref/disney/cta-hover.png"
+    },
+    {
+      "name": "card-zoom",
+      "action": "hover",
+      "target": "[data-wv-id='a91c...'] .card",
+      "source": "annotation: image zooms in on hover",
+      "viewports": ["desktop"],
+      "expect": { "styleSelector": "[data-wv-id='a91c...'] .card img", "changed": ["transform"] }
+    },
+    {
+      "name": "nav-shop-menu",
+      "action": "click",
+      "target": "header [aria-label='Open menu']",
+      "source": "user: drawer menu on tap, confirmed 2026-10-12",
+      "viewports": ["mobile"],
+      "expect": { "visible": ["[data-menu-drawer]"] }
+    },
+    {
+      "name": "characters-link",
+      "action": "click",
+      "target": "[data-wv-id='d0057fe6-...'] a",
+      "source": "annotation: Go directly to Disney page",
+      "expect": { "url": "/collections/disney" }
+    }
   ]
 }
 ```
@@ -92,6 +132,31 @@ checks only.
   depends on the data, such as a paginated product grid.
 - `hide` — selectors removed before screenshots (newsletter popups, cookie
   banners, chat widgets).
+- `interactions` — one entry per confirmed row of the interaction table. Each
+  runs in a fresh tab after the page is loaded and scrolled, with transitions
+  off so the final state is read at once.
+  - `action` — `hover` or `click`. Hover only exists on desktop: give hover
+    entries `viewports: ["desktop"]`, and add a `click` entry for the mobile
+    counterpart when the design has one.
+  - `target` — the element the action hits; prefer `[data-wv-id]`-scoped selectors.
+  - `source` — **required**, the evidence: `variant: <component> State=… (<nodeId>)`,
+    `annotation: <text>` or `user: <answer, date>`. Anything else fails: a
+    behaviour derived from a layer name is not tested, it is invented.
+  - `expect.visible` / `expect.hidden` — selectors that must be shown/hidden
+    after the action. A `visible` selector that was already visible before the
+    action fails, so the test can't pass without the interaction doing anything.
+  - `expect.style` — computed styles after the action, on `target` or on
+    `expect.styleSelector`; hex from Figma is compared to the computed rgb per
+    channel. Fails if the value already held before the action.
+  - `expect.changed` — computed properties that must differ from the default
+    state, for deltas without an exact value (zoom `transform`, `opacity`).
+  - `expect.url` — substring the URL must contain after a click (links,
+    filters, sort). Style checks are skipped once the page navigates.
+  - `reference` / `referenceMobile` — the Figma state screenshot; the element
+    in `capture` (default `target`) is screenshotted after the action and
+    scored like a block (`threshold`, `aspectTolerance` per interaction).
+  - `settleMs` — wait after the action (default 400) for hover-intent menus.
+  - `block` — optional; lets `--only <block>` re-run the block's interactions too.
 
 ## What it checks
 
@@ -106,9 +171,15 @@ Hard checks per viewport (any failure → FAIL):
 | Section order | wrong or missing sections |
 | No clipped rounded elements | tiles/cards cut by an `overflow:hidden` parent so they lose their corners (scroll rails are ignored) |
 
+Per interaction (any failure → FAIL): the `source` evidence is present, the
+target exists and accepts the action, no JS error is thrown, every `expect`
+holds and did not already hold before the action, and the after-state
+screenshot matches the state reference.
+
 Visual score per block with a reference: blurred perceptual pixel mismatch
 and aspect-ratio drift. Each scored block gets `<block>.png` (actual) and
-`<block>.diff.png` (red = mismatch) in the output folder.
+`<block>.diff.png` (red = mismatch) in the output folder; interactions with a
+reference get `interaction-<name>.png` and `interaction-<name>.diff.png`.
 
 Outputs: `report.md` (read this first), `report.json`, `full.png` per viewport.
 
@@ -134,11 +205,16 @@ Where a cause usually lives:
 | Setting has no visible effect | value off the schema's step/options (e.g. a `gap` of 31 on a 4px-step select renders nothing) — snap to a valid value; or the dev server is serving stale section code — restart it |
 | Rail doesn't reach the viewport edge | an ancestor with `overflow:hidden` at content width clips the bleed — let the content box overflow when the rail bleeds and keep the outer section clipping; check `cn()` merges conflicting width classes |
 | Third-party overlay in the screenshot (purchase pop, chat, cookie bar) | add its selector to `hide`; if it shows wrong content (e.g. another brand's product), report it |
+| `… was already … before hover` | the default state already looks like the hover state (e.g. hover colour hardcoded), or the selector hits the wrong element — fix the default from the Default variant |
+| `… not visible after hover/click` / `… unchanged` | the section has no hover/click handling for that element, the handler sits on another element, or a hover-intent delay exceeds `settleMs` — implement it from the state variant |
+| `target … matched nothing` / action timeout | element hidden on this viewport or covered by an overlay — check `viewports`, add the overlay to `hide` |
+| `source must start with …` | the behaviour has no evidence — go back to the component states / annotations, or ask the user |
 
 Rules:
 
 - **Never pass by loosening.** Don't raise `threshold`/`aspectTolerance` or
   switch a block to `structure` to make a real design difference disappear.
+  Don't delete or weaken an interaction's `expect` to get it green.
   Allowed exceptions: data-driven content, designer placeholders, a documented
   brand-guideline override, and font-metric wrapping you've already minimised.
   Write the reason in the block's `note` and list it in the final report.
@@ -150,5 +226,6 @@ Rules:
   iterations, or the fix needs a decision or asset you don't have (missing
   image, conflicting design, impossible layout). Report the diff images and the
   options.
-- **Done** = a full run (all blocks, all viewports) prints `Result: PASS`, with
-  the exceptions listed. Re-run on the deployed storefront after deploy.
+- **Done** = a full run (all blocks, all interactions, all viewports) prints
+  `Result: PASS`, with the exceptions listed. Re-run on the deployed storefront
+  after deploy.

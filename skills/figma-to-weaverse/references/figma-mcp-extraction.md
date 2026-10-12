@@ -11,8 +11,9 @@ maps onto the Weaverse JSON generator. Companion to this skill's `SKILL.md`.
 | `get_variable_defs` | design variables (color, type, spacing, radius) | theme token mapping (see below) |
 | `get_design_context` | layout, auto-layout, text content, component usage of a frame | composition + content per section |
 | `download_assets` | exported image/icon files + URLs | content manifest asset columns |
-| `get_screenshot` | rendered image of a frame/node | approval checkpoint + preview verification |
-| `search_design_system` / `get_libraries` | library components in use | understanding reusable component intent |
+| `get_screenshot` | rendered image of a frame/node | approval checkpoint, block and interaction-state references |
+| `search_design_system` / `get_libraries` | library components in use | locating the component set behind an instance |
+| `get_context_for_code_connect` | variant properties and options of a component set | interaction states (`State=Default\|Hover\|Pressed`) |
 
 Read order for a page: `get_design_context` on the page frame (content, layout,
 assets, styles, annotations — the primary call) → `get_variable_defs` when the
@@ -52,18 +53,36 @@ Figma auto-layout encodes composition directly — read it instead of guessing:
   links between frames → `card-slider` (confirm from the prototype, not from
   the static frame alone)
 
-## Interaction — infer, don't invent
+## Interaction — evidence first, never from names
 
-A static frame has no runtime behavior. Determine interaction from:
+A static frame has no runtime behavior. Collect evidence for each element that
+can react, in this order, and stop at the first source that answers it:
 
-- **Prototype links** between frames (arrow/auto-advance hints a carousel)
-- **Frame/layer names** (`Slider`, `Marquee`, `Carousel`, `Hover`)
-- **Designer notes / FigJam** alongside the design
+1. **Component states (instances).** An instance shows one variant of its
+   component. Locate the component set and list its variant properties with
+   `get_context_for_code_connect`. Read the **Default** variant, then **Hover**,
+   then click states (`Pressed`, `Active`, `Open`, `Selected`):
+   `get_design_context` on each variant node gives the exact delta to implement
+   and to assert (`background-color #FF6600`, underline, child revealed), and
+   `get_screenshot` gives the state reference image. Prototype reactions on the
+   instance (`ON_HOVER → CHANGE_TO Hover`, `ON_CLICK → OPEN_OVERLAY`) confirm the
+   trigger; read them with a read-only `use_figma` script when MCP doesn't
+   surface them (load `figma-use` first).
+2. **Annotations.** `data-interaction-annotations` and development annotations
+   (below).
+3. **Ask the user.** No state variant and no annotation → the element is
+   `UNCONFIRMED`. Ask, offering "static" as an option; don't build behaviour
+   until answered.
 
-If none of these signal motion, classify the block as `static`. Do not map a
-multi-card frame to a Swiper-based section just because several cards are shown —
-that mismatch is the Figma equivalent of the website skill's "basically a grid"
-mistake.
+Frame and layer names (`Slider`, `Marquee`, `Carousel Demo`, `hover to test`)
+are pointers to where evidence may live, not evidence. Do not map a multi-card
+frame to a Swiper-based section because several cards are shown, or add a
+hover because a layer says so — that mismatch is the Figma equivalent of the
+website skill's "basically a grid" mistake.
+
+Record each element in the spec's interaction table with its evidence
+(`variant: …` / `annotation: …` / `user: …`); each confirmed row becomes a
+`hover` or `click` entry in the visual check (`references/visual-check.md`).
 
 ## Annotations
 

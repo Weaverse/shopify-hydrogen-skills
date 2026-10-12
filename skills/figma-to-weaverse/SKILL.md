@@ -47,9 +47,9 @@ Same three deliverables as the website cloning skill, plus the live page:
 
 1. **Content manifest** — per-section table of real asset URLs (from Figma asset export, later replaced by Shopify CDN URLs), text, links, Shopify refs, media types.
 2. **Clone preview route** — a `$page` branch in `app/routes/clone-preview.$page.tsx` rendering the full design as React + Tailwind, section-marked, brand-adjusted. **User must approve this before section decomposition.**
-3. **Design spec** — section mapping, annotation table, schema boundaries, interaction model, token mapping.
+3. **Design spec** — section mapping, annotation table, schema boundaries, interaction table (every element that reacts, with its evidence), token mapping.
 4. **Live Weaverse page** — pushed through the Content API and verified on the deployed storefront, with the page JSON kept in `.clone/<page>/`.
-5. **Visual check PASS** — `.figma/<page>.visual.json` + Figma reference screenshots in `.figma/ref/<page>/`, and a final `scripts/visual_check.mjs` report that says `Result: PASS` (exceptions listed). The page is not done without it.
+5. **Visual check PASS** — `.figma/<page>.visual.json` + Figma reference screenshots (blocks and interaction states) in `.figma/ref/<page>/`, and a final `scripts/visual_check.mjs` report that says `Result: PASS` (exceptions listed), including every hover and click interaction. The page is not done without it.
 
 ## Extraction with Figma MCP (MCP-first)
 
@@ -61,7 +61,12 @@ Use the Figma MCP tools. They return **structured** design data — more precise
 2. **Harvest annotations.** Designer notes come back as `data-development-annotations` (semantics: H1/H2/H3, "not a heading, it's a link") and `data-interaction-annotations` (menus, link targets, hover behavior). Extract every one into an annotation table in the spec and map each to a requirement — they are easy to lose in a long response. Figma **comments** are not readable through MCP; ask the user for them if they matter.
 3. **Tokens.** `get_variable_defs` when the file uses variables; otherwise use the style list at the end of the `get_design_context` response. Map them into `project.config.theme` only for sitewide values; page-specific colors stay as section settings.
 4. **Structure.** `get_metadata` only to orient (pick nodes, find frames). Section boundaries are the top-level frames in the design context.
-5. **Interaction hints.** Layer names carry intent (e.g. `Grows Upward — Demo (hover to test)`, `Carousel Demo`, `Sort Dropdown (Grows Downwards)`). Record them; don't invent motion beyond them.
+5. **Interaction model — evidence first, in this order.** For every element that can react (buttons, links, cards, nav items, tabs, dropdowns, swatches):
+   1. **Component states.** If the node is an instance, check the states of its component before anything else. Find the component set (the design context names the component; `get_metadata` / `search_design_system` locate the set node), then `get_context_for_code_connect` on the set lists its variant properties, e.g. `State=Default|Hover|Pressed|Active|Disabled`. Read **Default** first, then **Hover**, then click states (pressed/active/open/selected): `get_design_context` on each variant node for the exact deltas (colour, underline, border, shadow, scale, swapped icon, revealed child), and `get_screenshot` → `.figma/ref/<page>/<interaction>.png` as the state reference. If MCP can't resolve the main component, read it with a read-only `use_figma` script (`getMainComponentAsync()`, the set's `variantGroupProperties`, the instance's prototype `reactions` such as `ON_HOVER → CHANGE_TO`); load `figma-use` first.
+   2. **Annotations.** `data-interaction-annotations` / development annotations on the node or its section (hover menus and their items, link targets, "opens drawer").
+   3. **No state and no note → ask.** Layer and section names (`Grows Upward — Demo (hover to test)`, `Carousel Demo`, `Sort Dropdown`) only tell you where to look; they are not a behaviour spec. Mark the element `UNCONFIRMED` in the interaction table and ask the user to confirm the behaviour (batch the questions, at the latest at the approval checkpoint), offering "static" as an option. Build no behaviour for it until answered.
+
+   Interaction table columns: element, trigger (`hover` / `click`), evidence (`variant: <component> State=Hover (<nodeId>)` / `annotation: <text>` / `user: <answer, date>` / `UNCONFIRMED`), expected outcome, state reference image. Every confirmed row becomes an `interactions` entry in the visual spec (step 11).
 6. **Assets.** The design context lists asset URLs (`figma.com/api/mcp/asset/...`). They **expire after ~7 days**. Download the bytes early; inspect them (some are flat color SVGs, decorative masks, or images meant to be shown flipped/cropped).
 7. **Global parts.** Header, nav, menu dropdowns and footer usually sit inside every frame. Treat them as layout/theme work (theme settings, Shopify menus, layout components), not as page sections.
 8. **Placeholders.** Designers leave gray boxes, sample product cards with `$00.00`, stray labels outside the canvas. Mark them `MISSING`/placeholder in the manifest and map the block to real data (collection products, Instagram feed) instead of reproducing the placeholders.
@@ -73,10 +78,10 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 ## Workflow
 
 1. **Preflight** (above). Read `.guides/brand-guideline.md`; ensure `sections.md` is current.
-2. **Extract** the design (steps above). Save the spec + manifest as `.figma/<brand>-<page>.md` (token table, annotation table, content manifest, gaps). While the node ids are at hand, save a Figma screenshot of every block frame to `.figma/ref/<page>/<block>.png` (`get_screenshot` → `curl`; the URLs are short-lived). These are the visual-check references.
+2. **Extract** the design (steps above). Save the spec + manifest as `.figma/<brand>-<page>.md` (token table, annotation table, interaction table, content manifest, gaps). While the node ids are at hand, save a Figma screenshot of every block frame to `.figma/ref/<page>/<block>.png` and of every interaction state variant to `.figma/ref/<page>/<interaction>.png` (`get_screenshot` → `curl`; the URLs are short-lived). These are the visual-check references.
 3. **Build the content manifest** — same columns and rules as the cloning skill.
 4. **Generate the clone preview route** at `app/routes/clone-preview.$page.tsx` — one `$page` branch per page, React + Tailwind, real Figma assets, `{/* === BLOCK NAME === */}` markers. Header/footer are not part of it.
-5. **User approval checkpoint — STOP and wait.** Present the preview URL (the dev server port printed by `npm run dev`, not a guessed one) + block count, brand overrides, gaps. Iterate until the user approves.
+5. **User approval checkpoint — STOP and wait.** Present the preview URL (the dev server port printed by `npm run dev`, not a guessed one) + block count, brand overrides, gaps, and the `UNCONFIRMED` interaction questions. Iterate until the user approves and every interaction row has evidence.
 6. **Move assets to Shopify right after approval.** Crop responsive variants (desktop/mobile) and flip/rotate where the design does, then upload with `weaverse-content-api` → `upload`. Keep the returned media objects in `.clone/<page>/shopify-assets.json`. Never ship Figma asset URLs.
 7. **Decompose & match.** Classify every block (media type, composition, layout mechanism, interaction) and match it with the cloning skill's priority + deep structural verification. Also check each candidate's `enabledOn` against the page type from preflight.
    - Parallelise the audit: one read-only scout per candidate section reporting SUPPORTED/GAP per requirement with file:line.
@@ -85,11 +90,11 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 8. **Integrate.** Register new sections, update `sections.md`, run the formatter on changed files only, typecheck and compare against the pre-change error baseline, build the way CI builds.
 9. **Generate the page JSON** with `generating-weaverse-project-json` (Shopify media objects, no default values, presets written explicitly), validate it.
 10. **Deliver through the Content API** (`weaverse-content-api`): `create-page` for CUSTOM/template pages (INDEX already exists), then one PATCH that relinks the root `main` and creates every item. Sitewide values go through `theme-update` (back up the old values first); menus go through the admin proxy (`menuUpdate`, back up the old menu). If the page needs code that isn't deployed yet, deploy right after (or tell the user the live page is broken until then).
-11. **Verify on the real route with Playwright — loop until PASS.** Write `.figma/<page>.visual.json` (one block per section: `[data-wv-id]` selector + reference image; `mode: "structure"` with a `note` only for data-driven or placeholder blocks) and run `node <this skill>/scripts/visual_check.mjs .figma/<page>.visual.json` from the storefront repo. Spec format, setup and the fix playbook: `references/visual-check.md`.
-    - Read `report.md`; for every ❌ open the block screenshot, the reference and the `.diff.png`, fix **one** cause (section settings via Content API, or section code), re-run with `--only <block>`. Repeat until the full run prints `Result: PASS` on desktop and mobile.
+11. **Verify on the real route with Playwright — loop until PASS.** Write `.figma/<page>.visual.json`: one block per section (`[data-wv-id]` selector + reference image; `mode: "structure"` with a `note` only for data-driven or placeholder blocks) and one `interactions` entry per confirmed interaction-table row (`hover` or `click`, its evidence as `source`, the expected outcome, the state reference). Run `node <this skill>/scripts/visual_check.mjs .figma/<page>.visual.json` from the storefront repo. Spec format, setup and the fix playbook: `references/visual-check.md`.
+    - Read `report.md`; for every ❌ open the screenshot, the reference and the `.diff.png` (or the interaction's problem list), fix **one** cause (section settings via Content API, or section code), re-run with `--only <block-or-interaction>`. Repeat until the full run prints `Result: PASS` on desktop and mobile.
     - Never pass by raising thresholds or switching a block to `structure` to hide a real design difference.
     - Escalate to the user with the diff images when a block makes no progress for three iterations or needs a decision/asset you don't have.
-    - The script covers JS errors, broken images, overflow, H1 count, section order and clipped rounded elements. Still exercise interactions by hand: hover effects, filters change the URL and the result count, sort, load more, menu links resolve; count products in the rendered DOM, not in loader JSON.
+    - The script covers JS errors, broken images, overflow, H1 count, section order, clipped rounded elements, and every listed hover/click interaction (each in a fresh tab, failing when the expected state already held before the action). Cover data behaviours as click interactions too: a filter or sort click expects a `url` change, load more expects the new items `visible`. Still count products in the rendered DOM, not in loader JSON.
     - After deploy, re-run the same spec against the deployed URL (`--url https://<storefront>/<path>`).
 12. **Clean up and hand over.** Remove the page's preview branch, commit (with the visual spec and references; the generated `.figma/visual/` output can stay untracked), push, watch the deploy workflow of *this* storefront (sibling-brand workflows in the same repo may fail for unrelated reasons). Report the final visual-check result, the accepted exceptions, and what Studio still needs (page SEO, missing collections/links, unpublished resources).
 
@@ -101,13 +106,14 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 | Section boundaries | HTML section markers, slider/grid classes | top-level frames / auto-layout containers from `get_metadata` |
 | Composition | read from HTML positioning | read from **auto-layout** direction/wrap/spacing |
 | Assets | image/video URLs in HTML | `download_assets` exports; no real video `src` |
-| Interaction | real runtime behavior in HTML | **none at runtime** — infer from frame names, prototype links, designer notes; do not invent interactions the design doesn't imply |
+| Interaction | real runtime behavior in HTML | **none at runtime** — read component state variants first, then annotations; ask the user when neither exists. Never derive behaviour from layer names |
 | Responsive variants | `<picture>` / breakpoint classes | separate desktop/mobile **frames** if the designer made them; otherwise one frame |
 
 ## Red Flags
 
 - **Skipping the approval checkpoint** — same rule as website cloning: the user must approve the clone preview before section decomposition.
-- **Inventing interactions** — a static Figma frame has no carousel autoplay or scroll behavior unless the prototype or notes say so. Don't classify a frame as a slider just because it shows multiple cards. Confirm from prototype links or frame naming.
+- **Inventing interactions** — a static Figma frame has no hover, carousel autoplay or scroll behavior unless a component state variant, a prototype reaction, an annotation or the user says so. Layer names like `Carousel Demo` or `hover to test` are a pointer, not evidence. Don't classify a frame as a slider just because it shows multiple cards.
+- **Skipping the instance's states** — an instance on the canvas shows one variant, usually Default. The Hover/Pressed variants on its component carry the real hover colour, underline or reveal; implementing hover from guesswork when they exist is a rework loop.
 - **Ignoring Figma variables** — `get_variable_defs` is the cleanest token source you'll ever get. Hardcoding colors/sizes when variables exist throws away the main Figma advantage.
 - **Guessing asset URLs** — export real assets with `download_assets`; mark `MISSING — [describe]` in the manifest when an export fails, don't substitute a placeholder.
 - **One giant bespoke section per frame** — decompose into reusable sections; reuse the registry first.
@@ -118,6 +124,7 @@ If the MCP can't reach the file or can't export a specific asset (e.g. a flatten
 - **Debugging data with the wrong storefront in `.env`** — "collection not found" may just mean the local token belongs to another brand's channel. Check preflight item 2 before blaming publishing.
 - **Letting Figma asset URLs reach Weaverse** — they expire within days and some image transforms block them. Upload to Shopify first.
 - **Dropping annotations** — designer notes about heading levels, link targets, menus and hover behavior are requirements; keep the annotation table and tick it off at the end.
+- **Checking hover and click by hand only** — an unscripted check is skipped on the next iteration. Every confirmed interaction row is an `interactions` entry in the visual spec, so a regression fails the run.
 - **Reproducing designer placeholders** — gray boxes and sample cards are stand-ins for real data, not content.
 - **Declaring success from a stale dev server** — after a PATCH, restart `npm run dev`; the old process can keep serving previous item data under the same ids.
 - **Declaring the page done without a PASS visual check** — eyeballing a screenshot missed clipped tile corners that the check reports as `no clipped rounded elements ❌`. Run the loop to PASS, desktop and mobile.
