@@ -45,30 +45,38 @@ The curated guides below cover specific version jumps with detailed diffs and We
 | [2025.5.0 → 2025.7.0](./references/upgrade-2025.5.0-to-2025.7.0.md) | **Major** — React Router 7.9.x migration, context creation, entry point updates |
 | [2025.7.0 → 2026.1.0](./references/upgrade-2025.7.0-to-2026.1.0.md) | **Major** — `@react-router` 7.12, `@shopify/hydrogen` 2026.1.0, Storefront API 2026-01, new cart mutations |
 | [2026.1.0 → 2026.4.7](./references/upgrade-2026.1.0-to-2026.4.7.md) | **Major** — Storefront API 2026-04, mandatory same-origin Storefront API proxy, Customer Privacy API consent migration, React Router ~7.16 |
+| [2026.4.7 → 2026.10.2](./references/upgrade-2026.4.7-to-2026.10.2.md) | **Rewrite** — Hydrogen becomes a request-handler library (`server.ts` composes the lifecycle, no `createHydrogenContext`), `storefront.graphql(gql())` with explicit cache, cart store at `/api/cart`, product form store, Customer Account handlers, `ShopifyScripts` analytics, `@weaverse/hydrogen` 6 (`@weaverse/hydrogen/react-router`) |
 
 ## Upgrade Process
 
-### 1. Use the official upgrade tool first
+### 1. Use the official upgrade tool first (classic releases)
 
 ```bash
 npx shopify hydrogen upgrade
 ```
 
-This CLI bumps and installs the required dependencies automatically, then generates a Markdown file listing the required source changes — apply those manually (or feed the file to your agent), then verify. It does not edit your source files itself.
+For upgrades up to 2026.4.7, this CLI bumps and installs the required dependencies, then generates a Markdown file listing the required source changes — apply those manually (or feed the file to your agent), then verify. It does not edit your source files itself.
+
+The move to **2026.10** is not a version bump: Hydrogen becomes a library and the app owns its request lifecycle. Follow the [2026.4.7 → 2026.10.2](./references/upgrade-2026.4.7-to-2026.10.2.md) guide and Shopify's packaged migration skill at `node_modules/@shopify/hydrogen/skills/migrate-to-hydrogen-2026-10/SKILL.md` (install `@shopify/hydrogen@2026.10` first). Weaverse themes also run the `@weaverse/hydrogen` 6 codemod:
+
+```bash
+npx @weaverse/cli@latest migrate v6 --dry-run   # list the files it would change
+npx @weaverse/cli@latest migrate v6
+```
+
+> Classic projects that are not migrating yet should pin `@shopify/hydrogen` to `~2026.4.x` and stay on `@weaverse/hydrogen` 5.x: a `^2026.4.0` range resolves to 2026.10.
 
 ### 2. Find the right guide above
 
 Match your current version to the appropriate guide. For multi-version jumps, apply each guide in order.
 
-### 3. Regenerate types after upgrading
+### 3. Regenerate or check types after upgrading
 
-```bash
-npm run codegen
-```
-
-> Never edit `.d.ts` generated files directly — always regenerate them.
+- **Classic (2026.4 and earlier):** regenerate the GraphQL types with `npm run codegen`. Never edit the generated `.d.ts` files directly.
+- **2026.10:** there is no codegen. Result types come from `gql()` documents through `@shopify/hydrogen/ts-plugin`, and `npm run typecheck` runs `react-router typegen && tsc --noEmit && hydrogen gql check --fail-on-warn`.
 
 ### 4. Resources
 
 - [Hydrogen changelog](https://github.com/Shopify/hydrogen/blob/main/packages/hydrogen/CHANGELOG.md)
 - [Hydrogen skeleton](https://github.com/Shopify/hydrogen/tree/main/templates/skeleton)
+- [Weaverse v6 & Hydrogen 2026.10 migration guide](https://docs.weaverse.io/migration-advanced/v6-migration)
