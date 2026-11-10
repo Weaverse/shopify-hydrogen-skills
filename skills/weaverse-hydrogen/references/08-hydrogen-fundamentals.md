@@ -1,169 +1,141 @@
 # Hydrogen Fundamentals
 
-> Shopify Hydrogen framework essentials for Weaverse theme development.
+> Shopify Hydrogen 2026.10 essentials for Weaverse theme development.
 
-## What is Hydrogen?
+## What is Hydrogen 2026.10?
 
-Hydrogen is Shopify's React-based framework for building custom headless storefronts. Built on React Router v7 (formerly Remix), it provides server-side rendering, streaming, and Shopify-optimized utilities.
+Hydrogen is Shopify's toolkit for custom headless storefronts. Since 2026.10 it is a **library of server handlers and client stores**, not a framework: the app's `server.ts` composes the request lifecycle and calls into Hydrogen where it needs Shopify (see [01-project-structure.md](01-project-structure.md)). React Router 7 renders the app.
 
-**Key packages:**
-- `@shopify/hydrogen` — Components, hooks, utilities
-- `@shopify/remix-oxygen` — Shopify's deployment runtime
-- `@shopify/hydrogen-react` — Client-side React hooks and components
+**Key packages and entries:**
+- `@shopify/hydrogen` — `gql`, `Cache`, `createShopifyRequestContext`, `createStorefrontClient`, `handleShopifyRoutes`, `handleShopifyRedirects`, `createCartServerHandlers`, `flattenConnection`, ...
+- `@shopify/hydrogen/react` — client stores and components: `createCartComponents`, `createProductComponents`, `ShopifyScripts`, `useCartAnalytics`, `ShopPayButton`
+- `@shopify/hydrogen/customer-account` — `createCustomerSession`, `createCustomerAccountServerHandlers`, `createCustomerAccountClient`, `gql` for Customer Account documents
+- `@shopify/hydrogen/vite` — `localHttps()`; `oxygen()` comes from `@shopify/mini-oxygen/vite`
+
+Gone in 2026.10: `createHydrogenContext`, `storefront.query()`/`mutate()`, `CartForm`, `Analytics.*`, `Image`, `Money`, `Pagination`, `getPaginationVariables`, `getSeoMeta`, the CSP helpers, `@shopify/remix-oxygen`, the `hydrogen()` Vite plugin and GraphQL codegen. `@shopify/hydrogen` 2026.10 also ships agent skills in `node_modules/@shopify/hydrogen/skills/`.
 
 ## Storefront API
-
-Hydrogen communicates with Shopify through the **Storefront API** (GraphQL).
 
 ### Query Pattern
 
 ```tsx
 // In route loaders
-export async function loader({ context }: LoaderFunctionArgs) {
-  const { storefront } = context;
+import { gql, type StorefrontApi } from '@shopify/hydrogen';
+import type { LoaderFunctionArgs } from 'react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
 
-  const { products } = await storefront.query(PRODUCTS_QUERY, {
-    variables: { first: 10 },
-  });
-
-  return { products };
-}
-
-const PRODUCTS_QUERY = `#graphql
-  query Products($first: Int!) {
+const PRODUCTS_QUERY = gql(`
+  query Products($first: Int!, $country: CountryCode, $language: LanguageCode)
+  @inContext(country: $country, language: $language) {
     products(first: $first) {
       nodes {
         id
         title
         handle
-        priceRange {
-          minVariantPrice {
-            amount
-            currencyCode
-          }
-        }
-        featuredImage {
-          url
-          altText
-          width
-          height
-        }
+        priceRange { minVariantPrice { amount currencyCode } }
+        featuredImage { url altText width height }
       }
     }
   }
-` as const;
+`);
+
+export type ProductsQuery = StorefrontApi.ResultOf<typeof PRODUCTS_QUERY>;
+
+export async function loader({ context }: LoaderFunctionArgs) {
+  const { products } = await context.storefront
+    .graphql(PRODUCTS_QUERY, { variables: { first: 10 }, cache: CACHE_DEFAULT })
+    .then(unwrapStorefront);
+  return { products };
+}
 ```
+
+- `graphql()` returns `{ data, errors, headers }`; it never throws on GraphQL errors. `unwrapStorefront` is Pilot's helper that throws like classic `query()` did.
+- Always pass `cache`: there is no default cache.
+- `$country`/`$language` are filled from the request; don't pass them.
+- Fragments go in `gql()`'s second argument. `npm run typecheck` validates every document with `hydrogen gql check --fail-on-warn`.
+
+Mutations use the same `graphql()` call with a `gql()` mutation document (and `CACHE_NONE` or no cache).
 
 ### In Weaverse Component Loaders
 
 ```tsx
-import type { ComponentLoaderArgs } from '@weaverse/hydrogen';
+import type { WeaverseComponentLoaderArgs } from '@weaverse/hydrogen/react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
 
 type LoaderData = { productHandle: string };
 
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<LoaderData>) => {
-  const { storefront } = weaverse;
-
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<LoaderData>) => {
   if (!data?.productHandle) return null;
-
-  return await storefront.query(PRODUCT_QUERY, {
-    variables: {
-      handle: data.productHandle,
-      language: storefront.i18n.language,
-      country: storefront.i18n.country,
-    },
-  });
+  return unwrapStorefront(
+    await weaverse.storefront.graphql(PRODUCT_QUERY, {
+      variables: { handle: data.productHandle },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
-```
-
-### Mutation Pattern
-
-```tsx
-export async function action({ context }: ActionFunctionArgs) {
-  const { storefront } = context;
-
-  const result = await storefront.mutate(CREATE_CART_MUTATION, {
-    variables: {
-      input: {
-        lines: [{ merchandiseId: 'gid://shopify/ProductVariant/123', quantity: 1 }],
-      },
-    },
-  });
-
-  return result;
-}
 ```
 
 ## Cart
 
-Hydrogen provides built-in cart management:
+`context.cart` and `CartForm` are gone. The cart is a server handler at `/api/cart` plus a client store:
+
+```ts
+// app/.server/cart.ts — registered in handleShopifyRoutes() in server.ts
+import { createCartServerHandlers, gql } from '@shopify/hydrogen';
+
+const CART_FRAGMENT = gql(`
+  fragment CartFragment on Cart {
+    buyerIdentity { countryCode }
+    # ... the extra fields your cart UI renders
+  }
+`);
+
+export const cartHandlers = createCartServerHandlers({ fragment: CART_FRAGMENT });
+```
+
+```ts
+// app/components/cart/cart-store.ts
+import type { CartDataFromHandlers } from '@shopify/hydrogen';
+import { createCartComponents } from '@shopify/hydrogen/react';
+import type { cartHandlers } from '~/.server/cart';
+
+export type CartData = CartDataFromHandlers<typeof cartHandlers>;
+export const { CartProvider, useCart, useCartActions, useCartForm } =
+  createCartComponents<typeof cartHandlers>();
+```
+
+Render `<CartProvider>` once in `root.tsx` (Pilot passes no server `initialData`, so documents stay anonymous and full-page cacheable). Forms post to `/api/cart` and work without JavaScript:
 
 ```tsx
-import { CartForm } from '@shopify/hydrogen';
-
-// Add to cart
-function AddToCartButton({ variantId }: { variantId: string }) {
+function RemoveButton({ lineId }: { lineId: string }) {
+  const { formProps, register } = useCartForm();
   return (
-    <CartForm route="/cart" action={CartForm.ACTIONS.LinesAdd}>
-      <input type="hidden" name="lines" value={JSON.stringify([
-        { merchandiseId: variantId, quantity: 1 }
-      ])} />
-      <button type="submit">Add to Cart</button>
-    </CartForm>
+    <form {...formProps()}>
+      <input type="hidden" {...register('lineId', { value: lineId })} />
+      <button type="submit" {...register('remove')}>Remove</button>
+    </form>
   );
 }
 ```
 
-### Cart Query Fragment
-
-Used in `server.ts` context setup:
-
-```tsx
-const CART_QUERY_FRAGMENT = `#graphql
-  fragment CartApiQuery on Cart {
-    id
-    totalQuantity
-    checkoutUrl
-    cost {
-      subtotalAmount { amount currencyCode }
-      totalAmount { amount currencyCode }
-    }
-    lines(first: 100) {
-      nodes {
-        id
-        quantity
-        merchandise {
-          ... on ProductVariant {
-            id
-            title
-            image { url altText width height }
-            price { amount currencyCode }
-            product { title handle }
-          }
-        }
-      }
-    }
-  }
-` as const;
-```
+Add to cart goes through the product form store (`createProductComponents()` → `ProductProvider`, `useProduct`, `useProductForm`). See Pilot's `app/components/product/product-form.tsx` and the `shopify-hydrogen` skill.
 
 ## Customer Accounts
 
-Hydrogen supports Shopify's Customer Account API:
+Hydrogen's handlers own the OAuth paths `/account/login`, `/account/authorize`, `/account/refresh` and `/account/logout` (`createCustomerAccountServerHandlers` from `@shopify/hydrogen/customer-account`, registered in `server.ts`). Pilot wraps the token and client in `context.customerAccount`:
 
 ```tsx
-// Check if customer is logged in
-export async function loader({ context, request }: LoaderFunctionArgs) {
-  const isLoggedIn = await context.customerAccount.isLoggedIn();
-
-  if (!isLoggedIn) {
-    return redirect(localizedPathForRequest(request, '/account/login'));
-  }
-
-  const { data } = await context.customerAccount.query(CUSTOMER_QUERY);
-  return { customer: data.customer };
+export async function loader({ context }: LoaderFunctionArgs) {
+  // Redirects to /account/login when signed out
+  await context.customerAccount.handleAuthStatus();
+  const { data } = await context.customerAccount.graphql(CUSTOMER_DETAILS_QUERY, { variables: {} });
+  return { customer: data?.customer };
 }
 ```
+
+Customer Account documents use `gql` from `@shopify/hydrogen/customer-account`. Link to the handler paths with a plain `<a>`/`<form>`, never `<Link>`/`<Form>`. Local login needs HTTPS (`npm run dev:https`).
 
 ## Internationalization (i18n)
 
@@ -173,93 +145,73 @@ navigation, cart, accounts, SEO, and production configuration. Use the
 skill for the canonical end-to-end procedure and verification matrix.
 
 Do not accept arbitrary locale-shaped route segments or maintain a second
-locale map in this reference. Derive `storefront.i18n` from the storefront's
-merchant-specific market allowlist. Hydrogen then applies that context to
-Storefront API queries; pass explicit language/country variables only when the
-query intentionally overrides the active request market.
+locale map in this reference. Derive the request's `i18n` from the storefront's
+merchant-specific market allowlist and pass it to `createShopifyRequestContext()`.
+`storefront.graphql()` then fills `$country`/`$language` from it; don't pass them
+in `variables`. When the market's Shopify `LanguageCode` differs from the locale
+Weaverse keys translations by, pass the market to `WeaverseClient` as `locale`
+(`@weaverse/hydrogen` 6.1+).
 
-## Hydrogen Components
+## Removed Components and Their Replacements
 
-### Image
+Hydrogen 2026.10 removed the classic UI helpers. Pilot ports them as local files:
+
+| Removed from `@shopify/hydrogen` | Pilot replacement |
+|---|---|
+| `Image` | `~/components/image` (CDN `srcset` via `~/components/shopify-image`) |
+| `Money`, `useMoney` | `~/components/money` |
+| `Pagination`, `getPaginationVariables` | `~/components/pagination`, `~/utils/pagination` |
+| `getSeoMeta`, `SeoConfig` | `~/utils/seo-meta` |
+| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` | `~/utils/csp` |
+| `ExternalVideo`, `ModelViewer` | `~/components/product-media/` |
+| `ShopPayButton` | `ShopPayButton` from `@shopify/hydrogen/react` |
+| `Analytics.*` | `ShopifyScripts` and `useCartAnalytics` from `@shopify/hydrogen/react`, plus route trackers |
+| `CacheShort`, `CacheLong`, `CacheNone`, `CacheCustom` | `Cache` from `@shopify/hydrogen` (`~/utils/cache`) |
 
 ```tsx
-import { Image } from '@shopify/hydrogen';
+import { Image } from '~/components/image';
+import { Money } from '~/components/money';
 
-<Image
-  data={product.featuredImage}
-  aspectRatio="1/1"
-  sizes="(min-width: 45em) 20vw, 50vw"
-/>
-```
-
-### Money
-
-```tsx
-import { Money } from '@shopify/hydrogen';
-
+<Image data={product.featuredImage} aspectRatio="1/1" sizes="(min-width: 45em) 20vw, 50vw" />
 <Money data={product.priceRange.minVariantPrice} />
-```
-
-### ShopPayButton
-
-```tsx
-import { ShopPayButton } from '@shopify/hydrogen';
-
-<ShopPayButton
-  storeDomain="your-store.myshopify.com"
-  variantIds={[selectedVariant.id]}
-/>
-```
-
-### Analytics
-
-```tsx
-import { Analytics } from '@shopify/hydrogen';
-
-<Analytics.ProductView
-  data={{
-    products: [{ id: product.id, title: product.title, price: product.price }],
-  }}
-/>
 ```
 
 ## Caching
 
-Hydrogen provides caching utilities for Storefront API and custom requests:
+There is no implicit cache in Hydrogen 2026.10. Build strategies with `Cache` from `@shopify/hydrogen` and pass one on every query:
 
 ```tsx
-import { CacheShort, CacheLong, CacheNone, CacheCustom } from '@shopify/hydrogen';
+// app/utils/cache.ts (Pilot)
+import { Cache } from '@shopify/hydrogen';
 
-// Short cache (1 second, stale-while-revalidate 9 seconds)
-await storefront.query(QUERY, { cache: CacheShort() });
+export const CACHE_DEFAULT = Cache({ mode: 'public', maxAge: 1, staleWhileRevalidate: 86_399 });
+export const CACHE_SHORT = Cache.short();
+export const CACHE_LONG = Cache.long();
+export const CACHE_NONE = Cache.none();
 
-// Long cache (1 hour, stale-while-revalidate 23 hours)
-await storefront.query(QUERY, { cache: CacheLong() });
-
-// No cache
-await storefront.query(QUERY, { cache: CacheNone() });
-
-// Custom cache
-await storefront.query(QUERY, {
-  cache: CacheCustom({ maxAge: 60, staleWhileRevalidate: 600 }),
-});
+// Usage
+await storefront.graphql(QUERY, { variables, cache: CACHE_LONG });
+await storefront.graphql(QUERY, { variables, cache: Cache({ mode: 'public', maxAge: 60, staleWhileRevalidate: 600 }) });
 ```
+
+`generateCacheControlHeader` is gone too; Pilot builds `Cache-Control` values with a local `cacheControlHeader()` in the same file.
 
 ## SEO
 
-Hydrogen provides SEO utilities:
-
 ```tsx
-import { getSeoMeta } from '@shopify/hydrogen';
+import type { MetaArgs } from 'react-router';
+import { getSeoMeta } from '~/utils/seo-meta'; // Pilot's port of the removed Hydrogen helper
 
-export function meta({ data }: MetaArgs) {
+export function meta({ data }: MetaArgs<typeof loader>) {
   return getSeoMeta({
-    title: data.product.seo.title ?? data.product.title,
-    description: data.product.seo.description ?? data.product.description,
-    media: data.product.featuredImage,
+    title: data?.product.seo.title ?? data?.product.title,
+    description: data?.product.seo.description ?? data?.product.description,
+    media: data?.product.featuredImage,
   });
 }
 ```
+
+For Weaverse-managed SEO, `getWeaverseSeoMeta(weaverseData)` from `@weaverse/hydrogen/react-router` returns the page's meta descriptors.
 
 ## Environment Variables
 
@@ -275,4 +227,7 @@ WEAVERSE_PROJECT_ID=your-weaverse-project-id
 PUBLIC_STOREFRONT_ID=your-storefront-id
 PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=your-client-id
 PUBLIC_CHECKOUT_DOMAIN=your-checkout-domain
+SHOP_ID=your-shop-id
 ```
+
+Oxygen injects `PRIVATE_STOREFRONT_API_TOKEN` for a linked storefront. Type them on `Env`, which extends `WeaverseEnv` from `@weaverse/hydrogen/react-router`.

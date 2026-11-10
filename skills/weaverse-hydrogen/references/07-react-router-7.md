@@ -1,17 +1,17 @@
-# 07 — React Router v7
+# 07 — React Router 7
 
 > Routes, layouts, loaders/actions, conventions, imports.
 
-## Key Changes from Remix
+## Imports
 
-Weaverse v5 uses React Router v7 (not Remix). All imports come from `react-router`:
+Weaverse Hydrogen themes run on React Router 7 (Pilot pins `react-router` and `@react-router/dev` to the same 7.x version; React Router 8 is not supported yet). All router imports come from `react-router`:
 
 ```tsx
-// ✅ React Router v7
+// ✅ React Router 7
 import { useLoaderData, useNavigate, Link, Outlet } from 'react-router';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from 'react-router';
 
-// ❌ Remix (deprecated)
+// ❌ Remix / classic Hydrogen (removed)
 import { useLoaderData } from '@remix-run/react';
 import type { LoaderFunctionArgs } from '@shopify/remix-oxygen';
 ```
@@ -20,6 +20,8 @@ import type { LoaderFunctionArgs } from '@shopify/remix-oxygen';
 
 ### `react-router.config.ts`
 
+Hydrogen 2026.10 has no React Router preset. Set the values the old `hydrogenPreset()` applied (see [01-project-structure.md](01-project-structure.md#react-routerconfigts) for the full file):
+
 ```tsx
 import type { Config } from '@react-router/dev/config';
 
@@ -27,22 +29,21 @@ export default {
   appDirectory: 'app',
   buildDirectory: 'dist',
   ssr: true,
+  future: { v8_middleware: true, v8_splitRouteModules: true /* ... */ },
 } satisfies Config;
 ```
 
 ### TypeScript
 
-```tsx
-// tsconfig.json
+```jsonc
+// tsconfig.json (trimmed from Pilot)
 {
-  "include": [
-    "./**/*.d.ts",
-    "./**/*.ts",
-    "./**/*.tsx",
-    ".react-router/types/**/*"
-  ],
+  "include": ["./**/*.d.ts", "./**/*.ts", "./**/*.tsx", ".react-router/types/**/*"],
   "compilerOptions": {
-    "rootDirs": [".", "./.react-router/types"]
+    "rootDirs": [".", "./.react-router/types"],
+    "types": ["@shopify/oxygen-workers-types", "node", "react-router", "vite/client"],
+    "paths": { "~/*": ["./app/*"] },
+    "plugins": [{ "name": "@shopify/hydrogen/ts-plugin" }]
   }
 }
 ```
@@ -51,43 +52,76 @@ export default {
 
 ```
 .react-router/
+storefront-graphql-env.d.ts
+customer-account-graphql-env.d.ts
 ```
 
 ### `env.d.ts`
 
+`server.ts` copies the object returned by `createAppContext()` onto React Router's context, so the context types extend it:
+
 ```tsx
+import type { AppContext } from './app/.server/context';
+
 declare module 'react-router' {
-  interface LoaderFunctionArgs {
-    context: AppLoadContext;
-  }
-  interface ActionFunctionArgs {
-    context: AppLoadContext;
-  }
+  interface AppLoadContext extends AppContext {}
+  interface RouterContextProvider extends AppContext {}
 }
 ```
 
-## Route File Convention
+## Route Config (`app/routes.ts`)
 
-Routes live in `app/routes/` and follow file-based routing:
+Pilot registers routes programmatically with `@react-router/dev/routes` (no flat file routing; `hydrogenRoutes()` is gone in Hydrogen 2026.10). Every page sits under an optional `:locale?` prefix:
 
-| File | URL |
-|------|-----|
-| `_index.tsx` | `/` |
-| `products.$handle.tsx` | `/products/:handle` |
-| `collections.$handle.tsx` | `/collections/:handle` |
-| `($locale)._index.tsx` | `/:locale?/` |
-| `($locale).products.$handle.tsx` | `/:locale?/products/:handle` |
-| `pages.$handle.tsx` | `/pages/:handle` |
-| `blogs.$blogHandle.$articleHandle.tsx` | `/blogs/:blogHandle/:articleHandle` |
+```tsx
+// app/routes.ts (trimmed)
+import { index, layout, prefix, type RouteConfig, route } from '@react-router/dev/routes';
+
+export default [
+  route('robots.txt', 'routes/seo/robots.ts'),
+  layout('routes/market-guard-resources.ts', [
+    ...prefix(':locale?', [
+      route('sitemap.xml', 'routes/seo/sitemap.ts'),
+      route('cart/checkout', 'routes/cart/checkout.tsx'),
+      // ... other resource routes
+    ]),
+  ]),
+  layout('routes/market-guard.ts', [
+    ...prefix(':locale?', [
+      index('routes/home.tsx'),
+      route('products/:productHandle', 'routes/products/product.tsx'),
+      route('collections/:collectionHandle', 'routes/collections/collection.tsx'),
+      route('pages/:pageHandle', 'routes/pages/regular-page.tsx'),
+      // ... other pages
+      route('*', 'routes/catch-all.tsx'), // Weaverse custom pages
+    ]),
+  ]),
+] satisfies RouteConfig;
+```
+
+Don't add route files for paths Hydrogen's handlers own in `server.ts`: `/api/cart`, `/api/predictive-search`, the Storefront API proxy and `/account/login|authorize|refresh|logout`. Link to the account paths with a plain `<a>`/`<form>`, not `<Link>`/`<Form>`.
 
 ## Route Structure with Weaverse
+
+Pilot renders Weaverse content through a small wrapper:
+
+```tsx
+// app/weaverse/index.tsx
+import { WeaverseHydrogenRoot } from '@weaverse/hydrogen/react-router';
+import { GenericError } from '~/components/root/generic-error';
+import { components } from './components';
+
+export function WeaverseContent() {
+  return <WeaverseHydrogenRoot components={components} errorComponent={GenericError} />;
+}
+```
 
 ### Homepage
 
 ```tsx
-// app/routes/($locale)._index.tsx
-import { WeaverseHydrogenRoot } from '@weaverse/hydrogen';
+// app/routes/home.tsx
 import type { LoaderFunctionArgs } from 'react-router';
+import { WeaverseContent } from '~/weaverse';
 
 export async function loader({ context }: LoaderFunctionArgs) {
   let weaverseData = await context.weaverse.loadPage({ type: 'INDEX' });
@@ -95,68 +129,73 @@ export async function loader({ context }: LoaderFunctionArgs) {
 }
 
 export default function Homepage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />;
 }
 ```
 
 ### Product Page
 
 ```tsx
-// app/routes/($locale).products.$handle.tsx
-import { WeaverseHydrogenRoot } from '@weaverse/hydrogen';
+// app/routes/products/product.tsx
+import { getSelectedProductOptions } from '@weaverse/hydrogen/react-router';
 import type { LoaderFunctionArgs } from 'react-router';
+import { PRODUCT_QUERY } from '~/graphql/queries';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
+import { WeaverseContent } from '~/weaverse';
 
-export async function loader({ context, params }: LoaderFunctionArgs) {
-  let { handle } = params;
+export async function loader({ context, params, request }: LoaderFunctionArgs) {
+  let { productHandle: handle } = params;
   let { storefront, weaverse } = context;
+  if (!handle) throw new Response(null, { status: 404 });
 
-  // Load Shopify product data
-  let { product } = await storefront.query(PRODUCT_QUERY, {
-    variables: { handle },
-  });
+  // Shopify and Weaverse data in parallel
+  let [{ product }, weaverseData] = await Promise.all([
+    storefront
+      .graphql(PRODUCT_QUERY, {
+        variables: { handle, selectedOptions: getSelectedProductOptions(request) },
+        cache: CACHE_DEFAULT,
+      })
+      .then(unwrapStorefront),
+    weaverse.loadPage({ type: 'PRODUCT', handle }),
+  ]);
 
   if (!product) throw new Response('Product not found', { status: 404 });
-
-  // Load Weaverse page data
-  let weaverseData = await weaverse.loadPage({
-    type: 'PRODUCT',
-    handle,
-  });
-
   return { product, weaverseData };
 }
 
 export default function ProductPage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />;
 }
 ```
+
+Pilot's real product route also wraps `<WeaverseContent />` in Hydrogen's `ProductProvider` (from `createProductComponents()` in `@shopify/hydrogen/react`) so every section reads the same variant selection.
 
 ### Collection Page
 
 ```tsx
-// app/routes/($locale).collections.$handle.tsx
+// app/routes/collections/collection.tsx
 export async function loader({ context, params }: LoaderFunctionArgs) {
-  let { handle } = params;
   let weaverseData = await context.weaverse.loadPage({
     type: 'COLLECTION',
-    handle,
+    handle: params.collectionHandle,
   });
   return { weaverseData };
 }
 
 export default function CollectionPage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />;
 }
 ```
 
-### Custom Page
+### Regular Page
 
 ```tsx
-// app/routes/($locale).pages.$handle.tsx
+// app/routes/pages/regular-page.tsx
 export async function loader({ context, params }: LoaderFunctionArgs) {
   let weaverseData = await context.weaverse.loadPage({
     type: 'PAGE',
-    handle: params.handle,
+    handle: params.pageHandle,
   });
   return { weaverseData };
 }
@@ -164,32 +203,7 @@ export async function loader({ context, params }: LoaderFunctionArgs) {
 
 ## Entry Server
 
-Uses `ServerRouter` instead of `RemixServer`:
-
-```tsx
-// app/entry.server.tsx
-import { ServerRouter } from 'react-router';
-
-export default async function handleRequest(
-  request: Request,
-  responseStatusCode: number,
-  responseHeaders: Headers,
-  routerContext: EntryContext,
-  context: AppLoadContext,
-) {
-  let body = await renderToReadableStream(
-    <NonceProvider>
-      <ServerRouter context={routerContext} url={request.url} nonce={nonce} />
-    </NonceProvider>,
-    { nonce, signal: request.signal },
-  );
-
-  return new Response(body, {
-    headers: responseHeaders,
-    status: responseStatusCode,
-  });
-}
-```
+Uses `ServerRouter`. Hydrogen 2026.10 removed its CSP helpers, so `NonceProvider` and `createContentSecurityPolicy` come from the theme (`app/utils/csp.ts` in Pilot). Full file: [01-project-structure.md](01-project-structure.md#entryservertsx).
 
 ## Loader Patterns
 

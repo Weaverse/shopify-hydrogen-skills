@@ -7,21 +7,34 @@
 Weaverse components fetch their own data via **loader functions**. The loader runs on the server, and its return value is passed to the component as `props.loaderData`.
 
 ```tsx
-import type { ComponentLoaderArgs, HydrogenComponentProps } from '@weaverse/hydrogen';
+import { gql } from '@shopify/hydrogen';
+import type { WeaverseComponentLoaderArgs, WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
+
+const PRODUCT_QUERY = gql(`
+  query product($country: CountryCode, $language: LanguageCode, $handle: String!)
+  @inContext(country: $country, language: $language) {
+    product(handle: $handle) { id title handle }
+  }
+`);
 
 type InputData = { productHandle: string };
 
 // Server-side data fetching
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<InputData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<InputData>) => {
   let { storefront } = weaverse;
   if (!data.productHandle) return null;
-  return await storefront.query(PRODUCT_QUERY, {
-    variables: { handle: data.productHandle },
-  });
+  return unwrapStorefront(
+    await storefront.graphql(PRODUCT_QUERY, {
+      variables: { handle: data.productHandle },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
 
 // Typed props from loader
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> & InputData;
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> & InputData;
 
 function MyComponent({ loaderData, ...rest }: Props) {
   let product = loaderData?.product;
@@ -32,12 +45,12 @@ function MyComponent({ loaderData, ...rest }: Props) {
 export default MyComponent;
 ```
 
-## ComponentLoaderArgs
+## WeaverseComponentLoaderArgs
 
 ```tsx
-type ComponentLoaderArgs<T> = {
-  weaverse: WeaverseClient;  // Access to storefront, fetchWithCache, env
+type WeaverseComponentLoaderArgs<T> = {
   data: T;                   // Component's current settings data
+  weaverse: WeaverseClient;  // Access to storefront, fetchWithCache, env
 };
 ```
 
@@ -45,9 +58,10 @@ type ComponentLoaderArgs<T> = {
 
 | Property | Usage |
 |----------|-------|
-| `weaverse.storefront` | Shopify Storefront API client |
-| `weaverse.storefront.query()` | Execute GraphQL queries |
-| `weaverse.storefront.i18n` | Current locale (`language`, `country`) |
+| `weaverse.storefront` | The request-scoped Hydrogen 2026.10 Storefront API client |
+| `weaverse.storefront.graphql(doc, { variables, cache })` | Run a `gql()` document; returns `{ data, errors, headers }` |
+| `weaverse.storefront.i18n` | The request's market (`language`, `country`, `pathPrefix`) |
+| `weaverse.customerAccount` | The Customer Account client, when the app passes one to `WeaverseClient` |
 | `weaverse.fetchWithCache()` | Fetch external APIs with caching |
 | `weaverse.env` | Environment variables |
 
@@ -59,54 +73,89 @@ The `data` object contains the component's current settings as configured by the
 
 ## Shopify Storefront API
 
+Hydrogen 2026.10 replaces `storefront.query()` with `storefront.graphql()`. Rules that apply to every call:
+
+- Write documents with `gql()` from `@shopify/hydrogen`. Compose fragments through its second argument, never `${}` interpolation.
+- Result types come from the document: `type CollectionQuery = StorefrontApi.ResultOf<typeof COLLECTION_QUERY>`. There is no codegen; `@shopify/hydrogen/ts-plugin` infers them and `hydrogen gql check --fail-on-warn` (in `npm run typecheck`) validates every document.
+- `graphql()` returns `{ data, errors, headers }` and does **not** throw on GraphQL errors. Pilot unwraps with `unwrapStorefront()` (`app/utils/storefront.ts`) to keep the throwing behavior.
+- There is **no default cache**. Pass `cache` on every call, or the query hits the API on every request. Pilot defines `CACHE_DEFAULT`, `CACHE_SHORT`, `CACHE_LONG` and `CACHE_NONE` in `app/utils/cache.ts`.
+- Don't pass `country`/`language`: the client fills `$country`/`$language` from the request context.
+
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<CollectionData>) => {
-  let { storefront } = weaverse;
+import { gql, type StorefrontApi } from '@shopify/hydrogen';
+import type { WeaverseComponentLoaderArgs } from '@weaverse/hydrogen/react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
 
-  return await storefront.query(COLLECTION_QUERY, {
-    variables: {
-      handle: data.collection?.handle,
-      first: data.productsCount || 4,
-      language: storefront.i18n.language,
-      country: storefront.i18n.country,
-    },
-  });
-};
+const PRODUCT_CARD_FRAGMENT = gql(`
+  fragment ProductCard on Product {
+    id
+    title
+    handle
+    priceRange { minVariantPrice { amount currencyCode } }
+    featuredImage { url altText width height }
+  }
+`);
 
-const COLLECTION_QUERY = `#graphql
+const COLLECTION_QUERY = gql(
+  `
   query CollectionProducts(
-    $handle: String!,
-    $first: Int!,
-    $language: LanguageCode,
+    $handle: String!
+    $first: Int!
     $country: CountryCode
-  ) @inContext(language: $language, country: $country) {
+    $language: LanguageCode
+  ) @inContext(country: $country, language: $language) {
     collection(handle: $handle) {
       id
       title
       handle
       products(first: $first) {
-        nodes {
-          id
-          title
-          handle
-          priceRange {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-          featuredImage {
-            url
-            altText
-            width
-            height
-          }
-        }
+        nodes { ...ProductCard }
       }
     }
   }
-` as const;
+`,
+  [PRODUCT_CARD_FRAGMENT], // fragments are passed, not interpolated
+);
+
+export type CollectionQuery = StorefrontApi.ResultOf<typeof COLLECTION_QUERY>;
+
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<CollectionData>) => {
+  if (!data.collection?.handle) return null;
+  return unwrapStorefront(
+    await weaverse.storefront.graphql(COLLECTION_QUERY, {
+      variables: { handle: data.collection.handle, first: data.productsCount || 4 },
+      cache: CACHE_DEFAULT,
+    }),
+  );
+};
 ```
+
+```ts
+// app/utils/cache.ts (Pilot)
+import { Cache } from '@shopify/hydrogen';
+
+// Classic Hydrogen's implicit default: fresh for a second, stale for a day
+export const CACHE_DEFAULT = Cache({ mode: 'public', maxAge: 1, staleWhileRevalidate: 86_399 });
+export const CACHE_SHORT = Cache.short();
+export const CACHE_LONG = Cache.long();
+export const CACHE_NONE = Cache.none();
+```
+
+```ts
+// app/utils/storefront.ts (Pilot)
+import type { GraphQLFormattedError } from '@shopify/hydrogen';
+
+export function unwrapStorefront<T>(result: { data: T | null; errors?: GraphQLFormattedError[] }): T {
+  if (result.errors?.length || !result.data) {
+    const messages = result.errors?.map(({ message }) => message) ?? ['No data returned'];
+    throw new Error(`[storefront.graphql] ${messages.join('\n')}`);
+  }
+  return result.data;
+}
+```
+
+`gql()` results are typed precisely, including nullable and union fields such as `nodes(ids:)`. Narrow them where you read them instead of casting to `any`.
 
 ---
 
@@ -115,17 +164,15 @@ const COLLECTION_QUERY = `#graphql
 For non-Shopify APIs, use `weaverse.fetchWithCache()`:
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<WeatherData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<WeatherData>) => {
   let { fetchWithCache, env } = weaverse;
 
   return await fetchWithCache<WeatherResponse>(
     `https://api.weather.example/forecast?city=${data.city}`,
     {
       headers: { 'API-Key': env.WEATHER_API_KEY },
-      strategy: {
-        maxAge: 300,                // Cache 5 minutes
-        staleWhileRevalidate: 3600, // Stale-while-revalidate 1 hour
-      },
+      // A Hydrogen CachingStrategy (`Cache` / `CachingStrategy` from `@shopify/hydrogen`)
+      strategy: Cache({ mode: 'public', maxAge: 300, staleWhileRevalidate: 3600 }),
     }
   );
 };
@@ -138,13 +185,13 @@ export let loader = async ({ weaverse, data }: ComponentLoaderArgs<WeatherData>)
 Fetch from multiple sources simultaneously for better performance:
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<ProductDetailData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<ProductDetailData>) => {
   let { storefront, fetchWithCache, env } = weaverse;
 
   let [productData, reviewsData] = await Promise.all([
-    storefront.query(PRODUCT_QUERY, {
-      variables: { handle: data.productHandle },
-    }),
+    storefront
+      .graphql(PRODUCT_QUERY, { variables: { handle: data.productHandle }, cache: CACHE_DEFAULT })
+      .then(unwrapStorefront),
     fetchWithCache(`https://api.reviews.example/product/${data.productHandle}`, {
       headers: { Authorization: `Bearer ${env.REVIEWS_API_KEY}` },
     }),
@@ -162,14 +209,17 @@ export let loader = async ({ weaverse, data }: ComponentLoaderArgs<ProductDetail
 ## Conditional Fetching
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<DataSourceData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<DataSourceData>) => {
   let { storefront, fetchWithCache, env } = weaverse;
 
   switch (data.source) {
     case 'collection':
-      return await storefront.query(COLLECTION_QUERY, {
-        variables: { handle: data.collectionHandle },
-      });
+      return unwrapStorefront(
+        await storefront.graphql(COLLECTION_QUERY, {
+          variables: { handle: data.collectionHandle },
+          cache: CACHE_DEFAULT,
+        }),
+      );
     case 'external':
       return await fetchWithCache(`https://api.example.com/products`, {
         headers: { 'API-Key': env.EXTERNAL_API_KEY },
@@ -187,24 +237,30 @@ export let loader = async ({ weaverse, data }: ComponentLoaderArgs<DataSourceDat
 When one query depends on another:
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<RelatedProductsData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<RelatedProductsData>) => {
   let { storefront } = weaverse;
 
   // Step 1: Get the product type
-  let { product } = await storefront.query(PRODUCT_BASIC_QUERY, {
-    variables: { handle: data.productHandle },
-  });
+  let { product } = unwrapStorefront(
+    await storefront.graphql(PRODUCT_BASIC_QUERY, {
+      variables: { handle: data.productHandle },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 
   if (!product) return { relatedProducts: [] };
 
   // Step 2: Find related products by type
-  let { products } = await storefront.query(RELATED_PRODUCTS_QUERY, {
-    variables: {
-      productType: product.productType,
-      excludeId: product.id,
-      first: 4,
-    },
-  });
+  let { products } = unwrapStorefront(
+    await storefront.graphql(RELATED_PRODUCTS_QUERY, {
+      variables: {
+        productType: product.productType,
+        excludeId: product.id,
+        first: 4,
+      },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 
   return { relatedProducts: products.nodes };
 };
@@ -215,7 +271,7 @@ export let loader = async ({ weaverse, data }: ComponentLoaderArgs<RelatedProduc
 ## Error Handling
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<ApiData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<ApiData>) => {
   try {
     let result = await weaverse.fetchWithCache(data.apiUrl);
     if (!result || !Array.isArray(result.items)) {

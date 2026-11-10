@@ -1,13 +1,18 @@
 // app/sections/featured-collection/index.tsx
 // A Weaverse section with server-side data fetching via loader.
 
-import { Image, Money } from "@shopify/hydrogen";
+import { gql } from "@shopify/hydrogen";
 import type {
-	ComponentLoaderArgs,
-	HydrogenComponentProps,
-} from "@weaverse/hydrogen";
-import { createSchema } from "@weaverse/hydrogen";
-import { forwardRef } from "react";
+	WeaverseComponentLoaderArgs,
+	WeaverseComponentProps,
+} from "@weaverse/hydrogen/react-router";
+import { createSchema } from "@weaverse/hydrogen/react-router";
+import type { Ref } from "react";
+// Hydrogen 2026.10 removed Image and Money; Pilot ports them as local components.
+import { Image } from "~/components/image";
+import { Money } from "~/components/money";
+import { CACHE_DEFAULT } from "~/utils/cache";
+import { unwrapStorefront } from "~/utils/storefront";
 
 // --- Data Types ---
 
@@ -17,34 +22,74 @@ type FeaturedCollectionData = {
 	showPrice: boolean;
 };
 
+// --- GraphQL Query ---
+
+// A gql() document: result types are inferred by @shopify/hydrogen/ts-plugin
+// and `npm run typecheck` validates it (no codegen). $country/$language are
+// filled from the request by the Storefront client.
+const COLLECTION_QUERY = gql(`
+  query FeaturedCollection(
+    $handle: String!
+    $first: Int!
+    $language: LanguageCode
+    $country: CountryCode
+  ) @inContext(language: $language, country: $country) {
+    collection(handle: $handle) {
+      id
+      title
+      handle
+      products(first: $first, sortKey: BEST_SELLING) {
+        nodes {
+          id
+          title
+          handle
+          featuredImage {
+            url
+            altText
+            width
+            height
+          }
+          priceRange {
+            minVariantPrice {
+              amount
+              currencyCode
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
 // --- Loader ---
 
 export const loader = async ({
 	weaverse,
 	data,
-}: ComponentLoaderArgs<FeaturedCollectionData>) => {
+}: WeaverseComponentLoaderArgs<FeaturedCollectionData>) => {
 	const { storefront } = weaverse;
 	const handle = data?.collection?.handle;
 
 	if (!handle) return null;
 
-	return await storefront.query(COLLECTION_QUERY, {
-		variables: {
-			handle,
-			first: data.productsCount ?? 8,
-			language: storefront.i18n.language,
-			country: storefront.i18n.country,
-		},
-	});
+	// graphql() returns { data, errors } and has no default cache:
+	// pass one explicitly and unwrap to throw on GraphQL errors.
+	return unwrapStorefront(
+		await storefront.graphql(COLLECTION_QUERY, {
+			variables: { handle, first: data.productsCount ?? 8 },
+			cache: CACHE_DEFAULT,
+		}),
+	);
 };
 
 // --- Component ---
 
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> &
-	FeaturedCollectionData;
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> &
+	FeaturedCollectionData & { ref?: Ref<HTMLElement> };
 
-const FeaturedCollection = forwardRef<HTMLElement, Props>((props, ref) => {
-	const { loaderData, showPrice, children, ...rest } = props;
+function FeaturedCollection(props: Props) {
+	// React 19: `ref` is a regular prop, no forwardRef needed
+	const { ref, loaderData, showPrice, children, ...rest } = props;
 	const collection = loaderData?.collection;
 	const products = collection?.products?.nodes ?? [];
 
@@ -92,7 +137,7 @@ const FeaturedCollection = forwardRef<HTMLElement, Props>((props, ref) => {
 			)}
 		</section>
 	);
-});
+}
 
 export default FeaturedCollection;
 
@@ -135,39 +180,3 @@ export const schema = createSchema({
 		children: [{ type: "heading", content: "Featured Collection" }],
 	},
 });
-
-// --- GraphQL Query ---
-
-const COLLECTION_QUERY = `#graphql
-  query FeaturedCollection(
-    $handle: String!
-    $first: Int!
-    $language: LanguageCode
-    $country: CountryCode
-  ) @inContext(language: $language, country: $country) {
-    collection(handle: $handle) {
-      id
-      title
-      handle
-      products(first: $first, sortKey: BEST_SELLING) {
-        nodes {
-          id
-          title
-          handle
-          featuredImage {
-            url
-            altText
-            width
-            height
-          }
-          priceRange {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-        }
-      }
-    }
-  }
-` as const;

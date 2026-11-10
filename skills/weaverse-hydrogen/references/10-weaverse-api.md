@@ -4,6 +4,8 @@
 
 ## Core Imports
 
+Hydrogen themes import everything from `@weaverse/hydrogen/react-router`, which re-exports the framework-free core (`@weaverse/hydrogen`) and the React hooks (`@weaverse/hydrogen/react`). `@weaverse/hydrogen/internal` is reserved for Weaverse's Builder and CLI; never import it in a theme.
+
 ```tsx
 // Main imports
 import {
@@ -16,51 +18,61 @@ import {
   useItemInstance,
   useParentInstance,
   useChildInstances,
+  useTranslation,
   getSelectedProductOptions,
+  getWeaverseSeoMeta,
   IMAGES_PLACEHOLDERS,
-} from '@weaverse/hydrogen';
+  WeaverseLoadError,
+} from '@weaverse/hydrogen/react-router';
 
 // Type imports
 import type {
-  HydrogenComponent,
-  HydrogenComponentProps,
-  HydrogenComponentSchema,
-  HydrogenThemeSchema,
-  ComponentLoaderArgs,
+  WeaverseComponent,
+  WeaverseComponentProps,
+  WeaverseComponentSchema,
+  WeaverseThemeSchema,
+  WeaverseComponentLoaderArgs,
+  WeaverseThemeSettings,
+  WeaverseLoaderData,
+  WeaverseEnv,
   WeaverseImage,
   WeaverseVideo,
-} from '@weaverse/hydrogen';
+} from '@weaverse/hydrogen/react-router';
 ```
+
+`@weaverse/hydrogen` 6 renamed the v5 `Hydrogen*` types (`HydrogenComponentProps` → `WeaverseComponentProps`, `ComponentLoaderArgs` → `WeaverseComponentLoaderArgs`, `ThemeSettingsResponse` → `WeaverseThemeSettingsResponse`, ...) and removed `useThemeText`/`ThemeTextProvider` (use `useTranslation`/`TranslationProvider`). `CachingStrategy` comes from `@shopify/hydrogen`. See [15-migration-v6.md](15-migration-v6.md).
 
 ---
 
 ## WeaverseClient
 
-Server-side class for interacting with Weaverse services. Initialized in `server.ts`.
+Server-side, request-scoped class for loading Weaverse content. Created in `app/.server/context.ts` and exposed to loaders as `context.weaverse`.
 
 ### Initialization
 
 ```tsx
-// server.ts
-import { WeaverseClient } from '@weaverse/hydrogen';
+// app/.server/context.ts (inside createAppContext)
+import { WeaverseClient } from '@weaverse/hydrogen/react-router';
 import { components } from '~/weaverse/components';
 import { themeSchema } from '~/weaverse/schema.server';
 
-export async function createAppLoadContext(request, env, executionContext) {
-  let hydrogenContext = createHydrogenContext({ env, request, cache, waitUntil, session, /* ... */ });
-
-  return {
-    ...hydrogenContext,
-    weaverse: new WeaverseClient({
-      ...hydrogenContext,
-      request,
-      cache,
-      themeSchema,
-      components,
-    }),
-  };
-}
+const weaverse = new WeaverseClient({
+  storefront,          // request-scoped Hydrogen 2026.10 Storefront client (required)
+  env,                 // Env, which extends WeaverseEnv
+  cache,               // await caches.open('hydrogen')
+  waitUntil,           // executionContext.waitUntil.bind(executionContext)
+  request,
+  themeSchema,
+  components,
+  customerAccount,     // optional; available to section loaders as weaverse.customerAccount
+  locale,              // optional (6.1+): { language, country, pathPrefix } for the market
+  throwPageLoadFailures: true, // optional: loadPage() rejects with WeaverseLoadError on outages
+});
 ```
+
+- `WeaverseClient` no longer takes a spread classic Hydrogen context (`createHydrogenContext()` is gone in 2026.10).
+- Without `locale`, Weaverse reads `storefront.i18n` (`language`, `country`, `pathPrefix`). Pass `locale` when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market): it sets the Translation Manager locale, the locale sent with page requests and `requestInfo.i18n`, while the Storefront API keeps its own `i18n`. Pilot passes `resolveRequestLocale(request)`.
+- `projectId` and `fetchTimeoutMs` are also accepted.
 
 ### loadPage()
 
@@ -72,7 +84,7 @@ weaverse.loadPage({
   handle?: string,       // Page/product/collection handle
   locale?: string,       // e.g., 'en-us', 'fr-ca'
   projectId?: string,    // For multi-project setups
-  strategy?: CacheOptions, // Caching strategy
+  strategy?: CachingStrategy, // Caching strategy (from @shopify/hydrogen)
 }): Promise<WeaverseLoaderData | null>
 ```
 
@@ -104,7 +116,26 @@ Load global theme settings.
 
 ```tsx
 let themeSettings = await context.weaverse.loadThemeSettings();
-// Returns HydrogenThemeSettings with all values from schema.server.ts
+// Returns WeaverseThemeSettings with all values from schema.server.ts
+```
+
+`loadThemeSettings()` never throws: when settings can't be loaded it returns schema defaults with `_loadFailed: true`.
+
+### Handling load failures
+
+With `throwPageLoadFailures: true`, `loadPage()` rejects with a `WeaverseLoadError` whose `kind` is `unavailable`, `invalid-response` or `configuration`, so a route can answer an outage with a retryable 503 instead of a 404. A missing project still resolves to `null`.
+
+```tsx
+import { WeaverseLoadError } from '@weaverse/hydrogen/react-router';
+
+try {
+  weaverseData = await weaverse.loadPage({ type: 'INDEX' });
+} catch (error) {
+  if (error instanceof WeaverseLoadError && error.kind === 'unavailable') {
+    throw new Response(null, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  }
+  throw error;
+}
 ```
 
 ### fetchWithCache()
@@ -115,10 +146,7 @@ Fetch external APIs with Hydrogen caching.
 let data = await weaverse.fetchWithCache<T>(url, {
   method: 'GET',
   headers: { 'API-Key': env.MY_API_KEY },
-  strategy: {
-    maxAge: 60,
-    staleWhileRevalidate: 600,
-  },
+  strategy: Cache({ mode: 'public', maxAge: 60, staleWhileRevalidate: 600 }), // Cache from @shopify/hydrogen
 });
 ```
 
@@ -126,17 +154,24 @@ let data = await weaverse.fetchWithCache<T>(url, {
 
 ## withWeaverse()
 
-Higher-order component that wraps the root `App` component to enable Weaverse theming and component system.
+Higher-order component that wraps the root layout to enable Weaverse theming and the component system. Pilot wraps the `Layout` export:
 
 ```tsx
 // app/root.tsx
-import { withWeaverse } from '@weaverse/hydrogen';
+import { withWeaverse } from '@weaverse/hydrogen/react-router';
 
-function App() {
+export const Layout = withWeaverse(function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <head>{/* Meta, Links, GlobalStyle */}</head>
+      <body>{children}{/* ScrollRestoration, Scripts */}</body>
+    </html>
+  );
+});
+
+export default function App() {
   return <Outlet />;
 }
-
-export default withWeaverse(App);
 ```
 
 **Must be used in `root.tsx`.** This is required for Weaverse Studio to function.
@@ -148,10 +183,18 @@ export default withWeaverse(App);
 Renders Weaverse page content. Used in route components.
 
 ```tsx
-import { WeaverseHydrogenRoot } from '@weaverse/hydrogen';
+// app/weaverse/index.tsx
+import { WeaverseHydrogenRoot } from '@weaverse/hydrogen/react-router';
+import { GenericError } from '~/components/root/generic-error';
+import { components } from './components';
 
+export function WeaverseContent() {
+  return <WeaverseHydrogenRoot components={components} errorComponent={GenericError} />;
+}
+
+// In a route
 export default function Homepage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />;
 }
 ```
 
@@ -170,7 +213,7 @@ The component:
 Access the global Weaverse instance with page data, theme settings, and component registry.
 
 ```tsx
-import { useWeaverse } from '@weaverse/hydrogen';
+import { useWeaverse } from '@weaverse/hydrogen/react-router';
 
 function MyComponent() {
   let { themeSettings, itemInstances, page, eventBus } = useWeaverse();
@@ -187,7 +230,7 @@ function MyComponent() {
 Shortcut to access global theme settings.
 
 ```tsx
-import { useThemeSettings } from '@weaverse/hydrogen';
+import { useThemeSettings } from '@weaverse/hydrogen/react-router';
 
 function Header() {
   let { headerBgColor, logoWidth, stickyHeader } = useThemeSettings();
@@ -200,12 +243,27 @@ function Header() {
 }
 ```
 
+### useTranslation()
+
+Theme text from the Translation Manager, resolved per locale: Studio overrides win over the theme's `staticContent` defaults (`themeSchema.i18n`). Replaces the removed v5 aliases `useThemeText`/`ThemeTextProvider`.
+
+```tsx
+import { useTranslation } from '@weaverse/hydrogen/react-router';
+
+function CartTitle() {
+  const { t } = useTranslation();
+  return <h2>{t('cart.title')}</h2>;
+}
+```
+
+`t(key, variables?)` interpolates `{{variable}}` placeholders, e.g. `t('badge.sale', { percentage: 15 })`.
+
 ### useItemInstance()
 
 Access a specific component instance by ID.
 
 ```tsx
-import { useItemInstance } from '@weaverse/hydrogen';
+import { useItemInstance } from '@weaverse/hydrogen/react-router';
 
 function SomeComponent() {
   let headerInstance = useItemInstance('site-header');
@@ -222,7 +280,7 @@ function SomeComponent() {
 Access the parent component instance from a child.
 
 ```tsx
-import { useParentInstance } from '@weaverse/hydrogen';
+import { useParentInstance } from '@weaverse/hydrogen/react-router';
 
 function ChildComponent() {
   let parent = useParentInstance();
@@ -239,7 +297,7 @@ function ChildComponent() {
 Access child component instances.
 
 ```tsx
-import { useChildInstances } from '@weaverse/hydrogen';
+import { useChildInstances } from '@weaverse/hydrogen/react-router';
 
 function ParentComponent() {
   let children = useChildInstances();
@@ -258,7 +316,7 @@ function ParentComponent() {
 Define component schemas with Zod validation at build/dev time. Since `@weaverse/hydrogen` 5.16.0 the Zod runtime is dev-only — `createSchema()` is an identity pass-through in production and Zod tree-shakes out of the bundle.
 
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
 
 export let schema = createSchema({
   type: 'my-component',
@@ -284,26 +342,18 @@ export let schema = createSchema({
 
 `enabled` accepts a boolean or synchronous callback with `{ page: { id, type, handle, locale }, group }`. The callback runs in the storefront preview and must return a boolean immediately. Errors, Promises, and invalid results fail closed for new insertion; existing instances remain editable. `enabledOn` is deprecated and can be migrated by moving its page/group checks into the callback.
 
-```tsx
-import type {
-  ComponentAvailabilityContext,
-  ComponentGroup,
-  Resolvable,
-} from '@weaverse/hydrogen';
-```
-
 See [03-component-schema.md](03-component-schema.md) for full schema reference.
 
 ---
 
 ## Types
 
-### HydrogenComponentProps
+### WeaverseComponentProps
 
 Base props interface for all Weaverse components.
 
 ```tsx
-interface HydrogenComponentProps<LoaderData = unknown> {
+interface WeaverseComponentProps<LoaderData = unknown> {
   children?: React.ReactNode;
   loaderData?: LoaderData;
   className?: string;
@@ -312,27 +362,23 @@ interface HydrogenComponentProps<LoaderData = unknown> {
 }
 ```
 
-### HydrogenComponentProps with Loader Data
+### WeaverseComponentProps with Loader Data
 
 ```tsx
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> & {
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> & {
   // component-specific props from schema
   heading: string;
   layout: 'grid' | 'list';
 };
 ```
 
-### ComponentLoaderArgs
+### WeaverseComponentLoaderArgs
 
 ```tsx
-interface ComponentLoaderArgs<T = Record<string, unknown>> {
-  weaverse: {
-    storefront: HydrogenContext['storefront'];
-    env: HydrogenEnv;
-    fetchWithCache: <R>(url: string, options?: RequestInit) => Promise<R>;
-  };
-  data: T; // Component settings from schema
-}
+type WeaverseComponentLoaderArgs<T = any> = {
+  data: T;                  // Component settings from schema, merged with defaults
+  weaverse: WeaverseClient; // storefront, customerAccount, env, fetchWithCache, ...
+};
 ```
 
 ### WeaverseImage
@@ -347,10 +393,10 @@ interface WeaverseImage {
 }
 ```
 
-### HydrogenThemeSchema
+### WeaverseThemeSchema
 
 ```tsx
-interface HydrogenThemeSchema {
+interface WeaverseThemeSchema {
   info: {
     version: string;
     author: string;
@@ -368,20 +414,20 @@ interface HydrogenThemeSchema {
 
 ### getSelectedProductOptions()
 
-Extract selected product options from URL search parameters.
+Extract selected product options from URL search parameters. In v6 it wraps Hydrogen 2026.10's helper with the same signature and still drops Weaverse Studio's query params.
 
 ```tsx
-import { getSelectedProductOptions } from '@weaverse/hydrogen';
+import { getSelectedProductOptions } from '@weaverse/hydrogen/react-router';
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
+export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const selectedOptions = getSelectedProductOptions(request);
 
-  const { product } = await context.storefront.query(PRODUCT_QUERY, {
-    variables: {
-      handle: params.handle,
-      selectedOptions,
-    },
-  });
+  const { product } = await context.storefront
+    .graphql(PRODUCT_QUERY, {
+      variables: { handle: params.productHandle, selectedOptions },
+      cache: CACHE_DEFAULT,
+    })
+    .then(unwrapStorefront);
 
   return { product };
 }
@@ -392,7 +438,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 Placeholder images for development.
 
 ```tsx
-import { IMAGES_PLACEHOLDERS } from '@weaverse/hydrogen';
+import { IMAGES_PLACEHOLDERS } from '@weaverse/hydrogen/react-router';
 
 // Use in component presets or default values
 export let schema = createSchema({
@@ -406,7 +452,7 @@ export let schema = createSchema({
           type: 'image',
           name: 'backgroundImage',
           label: 'Background',
-          defaultValue: IMAGES_PLACEHOLDERS.banner,
+          defaultValue: IMAGES_PLACEHOLDERS.banner_1,
         },
       ],
     },
@@ -414,4 +460,4 @@ export let schema = createSchema({
 });
 ```
 
-Available placeholders: `banner`, `product`, `collection`, `blog`, `article`, `page`.
+Available placeholders: `image`, `logo_white`, `logo_black`, `banner_1`–`banner_2`, `collection_1`–`collection_6`, `product_1`–`product_18`.

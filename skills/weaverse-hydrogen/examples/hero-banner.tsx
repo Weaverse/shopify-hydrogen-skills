@@ -1,23 +1,30 @@
 // app/sections/hero-banner/index.tsx
 // A complete Weaverse section with schema, settings groups, childTypes, and presets.
 
-import type { HydrogenComponentProps } from "@weaverse/hydrogen";
-import { createSchema } from "@weaverse/hydrogen";
-import { forwardRef } from "react";
+import type {
+	WeaverseComponentProps,
+	WeaverseImage,
+} from "@weaverse/hydrogen/react-router";
+import { createSchema } from "@weaverse/hydrogen/react-router";
+import type { Ref } from "react";
 
-interface HeroBannerProps extends HydrogenComponentProps {
+interface HeroBannerProps extends WeaverseComponentProps {
 	heading: string;
 	description: string;
 	buttonText: string;
 	buttonLink: string;
-	backgroundImage: string;
+	// `image` inputs return a WeaverseImage (or a URL string as a default value)
+	backgroundImage?: WeaverseImage | string;
 	overlayOpacity: number;
 	contentAlignment: "left" | "center" | "right";
 	minHeight: number;
+	// React 19: `ref` is a regular prop, no forwardRef needed
+	ref?: Ref<HTMLElement>;
 }
 
-const HeroBanner = forwardRef<HTMLElement, HeroBannerProps>((props, ref) => {
+function HeroBanner(props: HeroBannerProps) {
 	const {
+		ref,
 		heading,
 		description,
 		buttonText,
@@ -29,6 +36,9 @@ const HeroBanner = forwardRef<HTMLElement, HeroBannerProps>((props, ref) => {
 		children,
 		...rest
 	} = props;
+
+	const backgroundUrl =
+		typeof backgroundImage === "string" ? backgroundImage : backgroundImage?.url;
 
 	const alignClass = {
 		left: "text-left items-start",
@@ -42,8 +52,8 @@ const HeroBanner = forwardRef<HTMLElement, HeroBannerProps>((props, ref) => {
 			{...rest}
 			className="relative flex items-center justify-center bg-cover bg-center"
 			style={{
-				backgroundImage: backgroundImage
-					? `url(${backgroundImage})`
+				backgroundImage: backgroundUrl
+					? `url(${backgroundUrl})`
 					: undefined,
 				minHeight: `${minHeight}px`,
 			}}
@@ -80,7 +90,7 @@ const HeroBanner = forwardRef<HTMLElement, HeroBannerProps>((props, ref) => {
 			</div>
 		</section>
 	);
-});
+}
 
 export default HeroBanner;
 

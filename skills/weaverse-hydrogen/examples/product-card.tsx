@@ -1,11 +1,13 @@
 // app/sections/product-card/index.tsx
 // A child component — used inside parent sections via childTypes.
 
-import { Image, Money } from "@shopify/hydrogen";
-import type { HydrogenComponentProps } from "@weaverse/hydrogen";
-import { createSchema } from "@weaverse/hydrogen";
+import type { WeaverseComponentProps } from "@weaverse/hydrogen/react-router";
+import { createSchema } from "@weaverse/hydrogen/react-router";
+// Hydrogen 2026.10 removed Image and Money; Pilot ports them as local components.
+import { Image } from "~/components/image";
+import { Money } from "~/components/money";
 
-interface ProductCardProps extends HydrogenComponentProps {
+interface ProductCardProps extends WeaverseComponentProps {
 	product: {
 		handle: string;
 		title: string;

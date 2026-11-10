@@ -1,6 +1,6 @@
 ---
 name: weaverse-hydrogen
-description: "Build Shopify Hydrogen storefronts with Weaverse — components, schemas, loaders, theming, data fetching, React Router v7, deployment, and advanced features."
+description: "Build Shopify Hydrogen 2026.10 storefronts with Weaverse (@weaverse/hydrogen 6) — components, schemas, loaders, theming, data fetching, React Router v7, deployment, and advanced features."
 ---
 
 # Weaverse Hydrogen — Agent Skill
@@ -46,7 +46,9 @@ The reference files below provide offline context but may not reflect the latest
 
 Weaverse is a visual page builder for Shopify Hydrogen. It lets merchants customize storefronts via a drag-and-drop Studio while developers build type-safe React components with schemas that define the editor UI.
 
-**Stack:** React 19 · React Router v7 · Shopify Hydrogen · TypeScript · Tailwind CSS · Vite
+**Stack:** React 19 · React Router 7 · Shopify Hydrogen 2026.10 · `@weaverse/hydrogen` 6 · TypeScript · Tailwind CSS · Vite
+
+> **Versions.** This skill targets `@weaverse/hydrogen` 6.x on `@shopify/hydrogen` 2026.10+, as implemented by [Pilot](https://github.com/Weaverse/pilot) `main`. Import everything from `@weaverse/hydrogen/react-router` (never `@weaverse/hydrogen/internal`, which is reserved for Weaverse's own tooling). Themes still on Hydrogen 2026.4 or earlier use `@weaverse/hydrogen` 5.x: see [references/15-migration-v6.md](references/15-migration-v6.md) to upgrade.
 
 ---
 
@@ -54,8 +56,10 @@ Weaverse is a visual page builder for Shopify Hydrogen. It lets merchants custom
 
 ```
 app/
+├── .server/
+│   └── context.ts     # createAppContext(): storefront, session, customerAccount, WeaverseClient
 ├── components/        # Reusable UI components
-├── graphql/           # GraphQL queries & fragments
+├── graphql/           # gql() queries & fragments
 ├── hooks/             # Custom React hooks
 ├── routes/            # React Router v7 route files
 ├── sections/          # Weaverse section components ← YOUR WORK GOES HERE
@@ -66,11 +70,12 @@ app/
 │   └── csp.ts         # Content Security Policy for Weaverse
 ├── entry.client.tsx
 ├── entry.server.tsx
-└── root.tsx           # Wrapped with withWeaverse(App)
-server.ts              # WeaverseClient initialization
+├── routes.ts          # Route config (`@react-router/dev/routes`)
+└── root.tsx           # Layout wrapped with withWeaverse(...)
+server.ts              # Fetch handler: createAppContext → handleShopifyRoutes → React Router
+env.d.ts               # `Env extends WeaverseEnv`, React Router context typing
 vite.config.ts
 react-router.config.ts
-tailwind.config.js
 .env
 ```
 
@@ -91,16 +96,16 @@ export default MySection;
 export let schema = createSchema({ ... });
 
 // 3. Loader export (optional) — server-side data fetching
-export let loader = async (args: ComponentLoaderArgs<DataType>) => { ... };
+export let loader = async (args: WeaverseComponentLoaderArgs<DataType>) => { ... };
 ```
 
 ### Minimal Example
 
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';
-import type { HydrogenComponentProps } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
+import type { WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
 
-interface BannerProps extends HydrogenComponentProps {
+interface BannerProps extends WeaverseComponentProps {
   heading: string;
   description: string;
 }
@@ -140,7 +145,7 @@ export let schema = createSchema({
 
 - **Spread `{...rest}`** on the root element — required for Weaverse Studio interaction.
 - **Render `{children}`** if the component accepts child components (`childTypes`).
-- **`forwardRef` is optional** in React 19. If using React 18, wrap with `forwardRef` and attach `ref` to root element.
+- **React 19: take `ref` as a regular prop** and attach it to the root element. `forwardRef` is deprecated.
 - **`type` must be unique** across all components, use kebab-case (e.g., `hero-banner`).
 
 ---
@@ -150,14 +155,14 @@ export let schema = createSchema({
 Components must be registered in `app/weaverse/components.ts`:
 
 ```tsx
-import type { HydrogenComponent } from '@weaverse/hydrogen';
+import type { WeaverseComponent } from '@weaverse/hydrogen/react-router';
 
 // MUST use namespace imports (import * as X), NOT default imports
 import * as HeroBanner from '~/sections/hero-banner';
 import * as FeaturedCollection from '~/sections/featured-collection';
 import * as ProductCard from '~/sections/product-card';
 
-export let components: HydrogenComponent[] = [
+export let components: WeaverseComponent[] = [
   HeroBanner,
   FeaturedCollection,
   ProductCard,
@@ -171,7 +176,7 @@ export let components: HydrogenComponent[] = [
 ## 4. Schema with `createSchema()`
 
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
 
 export let schema = createSchema({
   type: 'my-component',          // Unique kebab-case identifier
@@ -251,19 +256,32 @@ export let schema = createSchema({
 ## 6. Data Fetching
 
 ```tsx
-import type { ComponentLoaderArgs, HydrogenComponentProps } from '@weaverse/hydrogen';
+import { gql } from '@shopify/hydrogen';
+import type { WeaverseComponentLoaderArgs, WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
+
+const COLLECTION_QUERY = gql(`
+  query collection($country: CountryCode, $language: LanguageCode, $handle: String!)
+  @inContext(country: $country, language: $language) {
+    collection(handle: $handle) { id title }
+  }
+`);
 
 type MyData = { collectionHandle: string };
 
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<MyData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<MyData>) => {
   let { storefront } = weaverse;
-  return await storefront.query(COLLECTION_QUERY, {
-    variables: { handle: data.collectionHandle },
-  });
+  return unwrapStorefront(
+    await storefront.graphql(COLLECTION_QUERY, {
+      variables: { handle: data.collectionHandle },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
 
 // Derive props type from loader return
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> & MyData;
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> & MyData;
 
 function MyComponent({ loaderData, ...rest }: Props) {
   let collection = loaderData?.collection;
@@ -273,7 +291,10 @@ export default MyComponent;
 ```
 
 **Key patterns:**
-- `weaverse.storefront.query()` — Shopify Storefront API
+- `weaverse.storefront.graphql(doc, { variables, cache })` — Shopify Storefront API. Returns `{ data, errors }` and never throws on GraphQL errors; Pilot unwraps with `unwrapStorefront` (`~/utils/storefront`)
+- Always pass `cache` (`CACHE_DEFAULT`, `CACHE_SHORT`, `CACHE_LONG`, `CACHE_NONE` from `~/utils/cache`): Hydrogen 2026.10 has no default cache
+- Never pass `country`/`language` in `variables`: the client fills `$country`/`$language` from the request
+- Documents are `gql()` from `@shopify/hydrogen`; fragments go in its second argument, never `${}` interpolation. Result types come from `StorefrontApi.ResultOf<typeof QUERY>` (no codegen)
 - `weaverse.fetchWithCache(url, options)` — External APIs with caching
 - `Promise.all([...])` — Parallel fetching
 - `shouldRevalidate: true` on schema inputs that affect the loader
@@ -290,7 +311,7 @@ export default MyComponent;
 
 ```tsx
 // app/components/GlobalStyle.tsx
-import { useThemeSettings } from '@weaverse/hydrogen';
+import { useThemeSettings } from '@weaverse/hydrogen/react-router';
 
 export function GlobalStyle() {
   let settings = useThemeSettings();
@@ -329,7 +350,7 @@ let buttonVariants = cva('inline-flex items-center rounded font-medium', {
 | API | Purpose |
 |-----|---------|
 | `createSchema()` | Define component schema with Zod validation |
-| `WeaverseClient` | Server-side client (initialized in `server.ts`) |
+| `WeaverseClient` | Server-side client (created in `app/.server/context.ts`) |
 | `weaverse.loadPage({ type, handle })` | Load page data in route loaders |
 | `weaverse.loadThemeSettings()` | Load global theme settings |
 | `weaverse.fetchWithCache(url)` | Cached external API fetching |
@@ -339,48 +360,84 @@ let buttonVariants = cva('inline-flex items-center rounded font-medium', {
 | `useItemInstance()` | Access a specific component instance |
 | `useParentInstance()` | Access parent component instance |
 | `useChildInstances()` | Access child component instances |
+| `useTranslation()` | Theme text from the Translation Manager (replaces the removed `useThemeText`) |
+| `getSelectedProductOptions(request)` | Selected options from the URL, without Studio query params |
 
 → Full details: [references/10-weaverse-api.md](references/10-weaverse-api.md)
 
 ---
 
-## 9. Server Setup (server.ts)
+## 9. Server Setup
 
-```tsx
-import { WeaverseClient } from '@weaverse/hydrogen';
+Hydrogen 2026.10 has no `createHydrogenContext()`. The app builds its own request context in `app/.server/context.ts`, and `server.ts` copies it onto React Router's context, so loaders read `context.storefront`, `context.weaverse` and friends. Trimmed from Pilot:
+
+```ts
+// app/.server/context.ts
+import { WeaverseClient } from '@weaverse/hydrogen/react-router';
+import { createCustomerAccount } from '~/.server/customer-account';
+import { AppSession } from '~/.server/session';
+import { createRequestStorefront, resolveRequestLocale } from '~/.server/storefront';
 import { components } from '~/weaverse/components';
 import { themeSchema } from '~/weaverse/schema.server';
 
-export async function createAppLoadContext(request, env, executionContext) {
-  let hydrogenContext = createHydrogenContext({ env, request, cache, waitUntil, session, /* ... */ });
-  return {
-    ...hydrogenContext,
-    weaverse: new WeaverseClient({
-      ...hydrogenContext,
-      request,
-      cache,
-      themeSchema,
-      components,
-    }),
-  };
+export async function createAppContext(request: Request, env: Env, executionContext: ExecutionContext) {
+  const waitUntil = executionContext.waitUntil.bind(executionContext);
+  const [cache, session] = await Promise.all([
+    caches.open('hydrogen'),
+    AppSession.init(request, [env.SESSION_SECRET]),
+  ]);
+  const storefront = createRequestStorefront({ request, env, cache, waitUntil });
+  const customerAccount = createCustomerAccount({ env, request, session, storefront });
+
+  const weaverse = new WeaverseClient({
+    storefront, // the request-scoped Hydrogen 2026.10 Storefront client
+    locale: resolveRequestLocale(request), // optional (6.1): the market's { language, country, pathPrefix }
+    env,
+    cache,
+    waitUntil,
+    request,
+    customerAccount, // optional; passed through to section loaders
+    themeSchema,
+    components,
+    throwPageLoadFailures: true, // optional: loadPage() rejects with WeaverseLoadError on outages
+  });
+
+  return { env, cache, waitUntil, session, storefront, customerAccount, weaverse };
 }
+
+export type AppContext = Awaited<ReturnType<typeof createAppContext>>;
 ```
+
+`locale` is only needed when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market); without it Weaverse reads `storefront.i18n`. `Env` extends `WeaverseEnv` from `@weaverse/hydrogen/react-router` in `env.d.ts`.
+
+`server.ts` is a module-format fetch handler: `createAppContext()` → `handleShopifyRoutes()` (cart, predictive search, Customer Account OAuth, Storefront API proxy) → React Router's `createRequestHandler(serverBuild)` with the context copied onto a `RouterContextProvider` → session commit and `requestContext.applyResponseHeaders()` → `handleShopifyRedirects()` on a 404. See [references/01-project-structure.md](references/01-project-structure.md).
 
 ---
 
 ## 10. Route Integration
 
 ```tsx
-// app/routes/($locale)._index.tsx
-import { WeaverseHydrogenRoot } from '@weaverse/hydrogen';
+// app/weaverse/index.tsx
+import { WeaverseHydrogenRoot } from '@weaverse/hydrogen/react-router';
+import { GenericError } from '~/components/root/generic-error';
+import { components } from './components';
+
+export function WeaverseContent() {
+  return <WeaverseHydrogenRoot components={components} errorComponent={GenericError} />;
+}
+
+// app/routes/home.tsx
+import type { LoaderFunctionArgs } from 'react-router';
+import { WeaverseContent } from '~/weaverse';
 
 export async function loader({ context }: LoaderFunctionArgs) {
+  // The key must be `weaverseData`
   let weaverseData = await context.weaverse.loadPage({ type: 'INDEX' });
   return { weaverseData };
 }
 
 export default function Homepage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />;
 }
 ```
 
@@ -388,11 +445,18 @@ For product pages:
 
 ```tsx
 export async function loader({ context, params }: LoaderFunctionArgs) {
-  let weaverseData = await context.weaverse.loadPage({
-    type: 'PRODUCT',
-    handle: params.productHandle,
-  });
-  return { weaverseData, /* other data */ };
+  const { storefront, weaverse } = context;
+  const [{ product }, weaverseData] = await Promise.all([
+    storefront
+      .graphql(PRODUCT_QUERY, {
+        variables: { handle: params.productHandle },
+        cache: CACHE_DEFAULT,
+      })
+      .then(unwrapStorefront),
+    weaverse.loadPage({ type: 'PRODUCT', handle: params.productHandle }),
+  ]);
+  if (!product) throw new Response('Not found', { status: 404 });
+  return { product, weaverseData };
 }
 ```
 
@@ -416,14 +480,15 @@ For detailed information on specific topics, read these reference files:
 | 10 | [references/10-weaverse-api.md](references/10-weaverse-api.md) | All hooks & WeaverseClient API |
 | 11 | [references/11-advanced-features.md](references/11-advanced-features.md) | Localization, data connectors, CSP |
 | 12 | [references/12-pilot-theme.md](references/12-pilot-theme.md) | Pilot theme patterns & conventions |
-| 13 | [references/13-migration-v5.md](references/13-migration-v5.md) | Remix → React Router v7 migration |
-| 14 | [references/14-sdk-caching-and-diagnostics.md](references/14-sdk-caching-and-diagnostics.md) | SDK 5.15.x caching, Builder diagnostics headers, nested multi-instance pages, client upgrades |
+| 13 | [references/13-migration-v5.md](references/13-migration-v5.md) | v5 (historical): Remix → React Router v7 migration |
+| 14 | [references/14-sdk-caching-and-diagnostics.md](references/14-sdk-caching-and-diagnostics.md) | SDK content caching, Builder diagnostics headers, nested multi-instance pages, client upgrades |
+| 15 | [references/15-migration-v6.md](references/15-migration-v6.md) | `@weaverse/hydrogen` 5 → 6 on Hydrogen 2026.10: codemod, renamed types, `WeaverseClient`, loaders |
 
 ## Examples
 
 | File | Shows |
 |------|-------|
 | [examples/hero-banner.tsx](examples/hero-banner.tsx) | Complete section with schema, settings groups, childTypes, presets |
-| [examples/featured-collection.tsx](examples/featured-collection.tsx) | Section with loader, Storefront API query |
+| [examples/featured-collection.tsx](examples/featured-collection.tsx) | Section with loader, `gql()` + `storefront.graphql()` |
 | [examples/product-card.tsx](examples/product-card.tsx) | Child component example |
 | [examples/components-registry.ts](examples/components-registry.ts) | Registration pattern |

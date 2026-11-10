@@ -1,5 +1,7 @@
 # Migration Guide: Remix → React Router v7 (Weaverse v5)
 
+> **Historical (v5).** This guide covers the 2025 move from Remix to React Router v7 with `@weaverse/hydrogen` 5.x on classic Hydrogen. Its imports (`@weaverse/hydrogen`, `HydrogenThemeSchema`, `ComponentLoaderArgs`, `createHydrogenContext`, ...) are v5 APIs. Current themes use `@weaverse/hydrogen` 6 on Hydrogen 2026.10: see [15-migration-v6.md](15-migration-v6.md), the [v6 migration guide](https://docs.weaverse.io/migration-advanced/v6-migration), and the [Hydrogen 2026.4.7 → 2026.10.2 upgrade guide](../../hydrogen-upgrades/references/upgrade-2026.4.7-to-2026.10.2.md).
+
 > Migrate your Weaverse Hydrogen project from Remix to React Router v7.
 
 ## Overview

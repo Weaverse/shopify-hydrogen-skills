@@ -24,11 +24,11 @@ Every Weaverse component file must export:
 
 ```tsx
 // app/sections/hero-banner/index.tsx
-import { createSchema } from '@weaverse/hydrogen';
-import type { HydrogenComponentProps } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
+import type { WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
 
 // --- Component ---
-interface HeroBannerProps extends HydrogenComponentProps {
+interface HeroBannerProps extends WeaverseComponentProps {
   heading: string;
   subheading: string;
   buttonText: string;
@@ -121,24 +121,19 @@ import * as HeroBanner from '~/sections/hero-banner';
 import HeroBanner from '~/sections/hero-banner';
 ```
 
-### 4. `forwardRef` is Optional (React 19)
+### 4. No `forwardRef` (React 19)
 
-In React 19, `forwardRef` is no longer required. Just spread `{...rest}`:
+`@weaverse/hydrogen` 6 requires React 19, where `ref` is a regular prop and `forwardRef` is deprecated. Declare `ref` on the props and pass it to the root element:
 
 ```tsx
-// React 19 — no forwardRef needed
-function MySection(props: MySectionProps) {
-  let { heading, ...rest } = props;
-  return <section {...rest}><h2>{heading}</h2></section>;
+interface MySectionProps extends WeaverseComponentProps {
+  heading: string;
+  ref?: React.Ref<HTMLElement>;
 }
-export default MySection;
 
-// React 18 — use forwardRef
-import { forwardRef } from 'react';
-let MySection = forwardRef<HTMLElement, MySectionProps>((props, ref) => {
-  let { heading, ...rest } = props;
+function MySection({ ref, heading, ...rest }: MySectionProps) {
   return <section ref={ref} {...rest}><h2>{heading}</h2></section>;
-});
+}
 export default MySection;
 ```
 
@@ -165,14 +160,14 @@ Keep the callback pure and return a boolean immediately. Errors, Promises, and i
 After creating a component, register it in `app/weaverse/components.ts`:
 
 ```tsx
-import type { HydrogenComponent } from '@weaverse/hydrogen';
+import type { WeaverseComponent } from '@weaverse/hydrogen/react-router';
 
 import * as HeroBanner from '~/sections/hero-banner';
 import * as FeaturedCollection from '~/sections/featured-collection';
 import * as ProductCard from '~/sections/product-card';
 import * as Testimonials from '~/sections/testimonials';
 
-export let components: HydrogenComponent[] = [
+export let components: WeaverseComponent[] = [
   HeroBanner,
   FeaturedCollection,
   ProductCard,
@@ -187,9 +182,9 @@ Then restart your dev server: `npm run dev`
 ### Basic (no loader)
 
 ```tsx
-import type { HydrogenComponentProps } from '@weaverse/hydrogen';
+import type { WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
 
-interface MyProps extends HydrogenComponentProps {
+interface MyProps extends WeaverseComponentProps {
   heading: string;
   showButton: boolean;
   gap: number;
@@ -199,16 +194,24 @@ interface MyProps extends HydrogenComponentProps {
 ### With Loader
 
 ```tsx
-import type { HydrogenComponentProps, ComponentLoaderArgs } from '@weaverse/hydrogen';
+import type { WeaverseComponentProps, WeaverseComponentLoaderArgs } from '@weaverse/hydrogen/react-router';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
+// COLLECTION_QUERY is a gql() document, see 05-data-fetching.md
 
 type InputData = { collectionHandle: string };
 
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<InputData>) => {
-  return await weaverse.storefront.query(QUERY, { variables: { handle: data.collectionHandle } });
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<InputData>) => {
+  return unwrapStorefront(
+    await weaverse.storefront.graphql(COLLECTION_QUERY, {
+      variables: { handle: data.collectionHandle },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
 
 // Derive props from loader return type
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> & InputData;
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> & InputData;
 
 function MyComponent({ loaderData, collectionHandle, ...rest }: Props) {
   // loaderData is fully typed
