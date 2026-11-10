@@ -18,8 +18,8 @@ Cookies on .segai.cc:    Reads cookies from     Receives cart       Receives web
 
          │                       │                    │                   │
          │  Add-to-Cart          │                    │                   │
-         │ ──────────────────►   │  cart.updateAttrs  │                   │
-         │                       │ ─────────────────► │                   │
+         │ ──────────────────►   │  cartAttributes-   │                   │
+         │                       │  Update ─────────► │                   │
          │                       │                    │ ─────────────────►│
          │                       │                    │  order.note_      │
          │                       │                    │  attributes has   │
@@ -47,102 +47,116 @@ If you maintain your own first-party cross-subdomain attribution cookie (recomme
 
 ---
 
-## Where to stash: the two cart entry paths
+## Where to stash: the cart entry paths
 
-This is the trap most implementations fall into. There are **two** Hydrogen routes that mutate the cart, and your stash logic needs to run in **both**:
+This is the trap most implementations fall into. On Hydrogen 2026.10 (Pilot `main`) the cart is mutated by more than one server path, and your stash logic needs to run in **each** one that creates or changes a cart. There is no `context.cart` and no `CartForm` action route anymore: cart forms and the cart store post to Hydrogen's `/api/cart` handlers, which `server.ts` registers through `handleShopifyRoutes`.
 
-### Path 1 — POST `/cart` action handler
+### Path 1 — `POST /api/cart` (the cart store)
 
-The regular Add-to-Cart flow. Driven by `<CartForm action={CartForm.ACTIONS.LinesAdd}>` (and `LinesUpdate`, `BuyerIdentityUpdate`, etc.). Handled by `app/routes/cart/cart-page.tsx` (or `app/routes/cart.tsx` in older templates).
+The regular Add-to-Cart flow: `useProductForm()` / `useCartForm()` forms and `window.Shopify.actions.updateCart()` all post to `/api/cart`. To run code around it, register your own `POST /api/cart` handler **before** `cartHandlers` (the first match wins) and delegate to `cartHandlers.post`, the way Pilot's `createPilotCartHandlers()` in `app/.server/cart.ts` already does for the market sync:
 
 ```ts
-// app/routes/cart/cart-page.tsx
+// app/.server/cart.ts
+import { cartQueries, createShopifyRouteHandler, type ShopifyRouteHandlerContext } from "@shopify/hydrogen";
 import { buildAttributionCartAttrsFromCookies } from "~/utils/attribution";
 
-export async function action({ request, context }: ActionFunctionArgs) {
-  const { cart } = context;
-  const formData = await request.formData();
-  const { action: cartFormAction, inputs } = CartForm.getFormInput(formData);
+type Attribute = { key: string; value: string | null };
 
-  let result: CartQueryDataReturn;
-  switch (cartFormAction) {
-    case CartForm.ACTIONS.LinesAdd:
-      result = await cart.addLines(inputs.lines as CartLineInput[]);
-      break;
-    // ... other actions
-  }
+export const attributionCartHandler = {
+  post: createShopifyRouteHandler(
+    "/api/cart",
+    "POST",
+    async (context: Omit<ShopifyRouteHandlerContext, "sessionManager">) => {
+      const result = await cartHandlers.post(context);
 
-  // After ANY successful cart mutation, merge attribution identifiers
-  // into cart.attributes. Idempotent — skips when the cart already
-  // carries them.
-  if (result?.cart) {
-    const desired = buildAttributionCartAttrsFromCookies(
-      request.headers.get("Cookie"),
-    );
-    if (desired.length > 0) {
-      const existing = (result.cart as { attributes?: Array<{key:string;value:string}> })
-        .attributes ?? [];
-      const missing = desired.filter(
-        (d) => !existing.some((e) => e.key === d.key && e.value === d.value),
+      // After ANY successful cart mutation, merge attribution identifiers
+      // into the cart's attributes. Idempotent — skips when the cart already
+      // carries them.
+      const cart =
+        result.type === "json"
+          ? (result.data as { cart?: { id?: string; attributes?: Attribute[] } }).cart
+          : undefined;
+      const desired = buildAttributionCartAttrsFromCookies(
+        context.request.headers.get("Cookie"),
       );
-      if (missing.length > 0) {
-        const preserveKeys = new Set(desired.map((d) => d.key));
-        const merged = [
-          ...existing.filter((e) => !preserveKeys.has(e.key)),
-          ...desired,
-        ];
-        try {
-          const attrResult = await cart.updateAttributes(merged);
-          if (attrResult?.cart) result = attrResult;
-        } catch {
-          // best-effort — don't fail the cart mutation if this hiccups
+      if (cart?.id && desired.length > 0) {
+        const existing = cart.attributes ?? [];
+        const missing = desired.filter(
+          (d) => !existing.some((e) => e.key === d.key && e.value === d.value),
+        );
+        if (missing.length > 0) {
+          const preserveKeys = new Set(desired.map((d) => d.key));
+          const attributes = [
+            ...existing
+              .filter((e) => !preserveKeys.has(e.key))
+              .map((e) => ({ key: e.key, value: e.value ?? "" })),
+            ...desired,
+          ];
+          // Best-effort — never fail the cart mutation if this hiccups.
+          await context.storefrontClient
+            .graphql(cartQueries.cartAttributesUpdate, {
+              variables: { cartId: cart.id, attributes },
+            })
+            .catch(() => undefined);
         }
       }
-    }
-  }
-
-  return data({ cart: result?.cart, ... });
-}
+      return result;
+    },
+  ),
+};
 ```
 
-The merge step matters: Shopify's `cartAttributesUpdate` mutation **replaces** the full attributes set, so you must send the union to avoid clobbering whatever the storefront has already written (e.g. by a 3rd-party app's tracker).
+Register it in `server.ts` ahead of `cartHandlers` in the `handlers` array. If you already have an app-owned `POST /api/cart` (Pilot's syncs the cart's market and customer first), fold the stash into that handler instead of adding a second one: only the first matching handler runs.
 
-### Path 2 — GET `/cart/<variantId>:<qty>?checkout` loader
+The merge step matters: Shopify's `cartAttributesUpdate` mutation **replaces** the full attributes set, so you must send the union to avoid clobbering whatever the storefront has already written (e.g. by a 3rd-party app's tracker). The same rule applies on the client: the cart store's `attributes-update` also replaces the whole list, so any client-side attribute editor must resend the stashed `_*` keys it finds in `state.data.attributes`.
 
-The **Buy-now / instant-checkout** flow. Generated by buttons like:
+### Path 2 — GET `/cart/<variantId>:<qty>` permalink
+
+The **Buy-now / instant-checkout** flow, generated by links like:
 
 ```tsx
-<Link to={`/cart/${variantId}:${qty}?checkout`} ...>Buy now</Link>
+<a href={`/cart/${variantId}:${qty}`}>Buy now</a>
 ```
 
-Handled by `app/routes/cart/lines.tsx` — a LOADER (GET, no form data) that calls `cart.create()` directly and redirects to checkout. **This route never touches the POST action.** Without the stash here, every Buy-now purchase lands in Shopify with empty `note_attributes`.
+Hydrogen 2026.10 answers cart permalinks itself inside `handleShopifyRoutes` (it hands them to Shopify's own permalink). Pilot's `server.ts` intercepts permalinks **without** a `payment` param and lets React Router serve them from `app/routes/cart/lines.tsx`, a LOADER (GET, no form data) that creates the cart with `storefront.graphql(cartQueries.cartCreate, …)` and redirects to checkout. **This path never touches `/api/cart`.** Without the stash here, every Buy-now purchase lands in Shopify with empty `note_attributes`.
 
 ```ts
 // app/routes/cart/lines.tsx
+import { cartQueries, createCartCookie } from "@shopify/hydrogen";
 import { buildAttributionCartAttrsFromCookies } from "~/utils/attribution";
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const { cart } = context;
-  // ... parse lines from params
+  const { storefront } = context;
+  // ... parse linesMap from params.lines, read ?discount=
 
-  // Stash attribution at cart creation. Shopify's cartCreate input
-  // accepts `attributes`, so this is a single round-trip — no separate
-  // updateAttributes call needed.
+  // Stash attribution at cart creation. `cartCreate`'s input accepts
+  // `attributes`, so this is a single round-trip.
   const attributionAttrs = buildAttributionCartAttrsFromCookies(
     request.headers.get("Cookie"),
   );
 
-  const result = await cart.create({
-    lines: linesMap,
-    discountCodes: discountArray,
-    ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
+  const result = await storefront.graphql(cartQueries.cartCreate, {
+    variables: {
+      input: {
+        lines: linesMap,
+        discountCodes: discount ? [discount] : [],
+        buyerIdentity: { countryCode: storefront.i18n.country },
+        ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
+      },
+    },
   });
 
-  // ... redirect to cartResult.checkoutUrl
+  // ... set createCartCookie(cart.id), redirect to cart.checkoutUrl
 }
 ```
 
-If your template has additional cart-mutating routes (e.g. a `/cart/upsell` endpoint, a "save for later" feature), apply the same pattern there.
+Permalinks **with** `payment` (the Shop Pay button's links) stay with Hydrogen's handler and Shopify's permalink, so no app code runs on them; attribution on that path relies on Shopify's own checkout tracking.
+
+### Path 3 (optional) — the checkout hand-off
+
+Pilot's checkout button goes through `app/routes/cart/checkout.tsx`, a loader that syncs the cart's country and redirects to `checkoutUrl` with `appendForwardedAttribution()`. It is the last server hop before checkout, so it is a good place for a final idempotent stash (`cartQueries.cartAttributesUpdate` with the merged list) when cookies were set after the cart was created.
+
+If your theme has additional cart-mutating endpoints (e.g. an upsell handler, a "save for later" feature), apply the same pattern there.
 
 ---
 
@@ -276,16 +290,13 @@ The Google Ads forwarder already accepts `event.custom_data.gclid` in most refer
 
 ## Why not client-side stash?
 
-A tempting alternative is to do the stash in a React `useEffect` somewhere — typically in the cart drawer or `<CartSummary>` component:
+A tempting alternative is to do the stash in a React `useEffect` somewhere — typically in the cart drawer or cart summary component:
 
 ```tsx
 // ❌ DON'T DO THIS — racy, mounts only when cart UI is rendered
 useEffect(() => {
   const attribution = getAttribution();
-  fetcher.submit({ cartFormInput: JSON.stringify({
-    action: CartForm.ACTIONS.AttributesUpdateInput,
-    inputs: { attributes: [...] },
-  })}, { method: "POST", action: "/cart" });
+  window.Shopify?.actions?.updateCart({ attributes: [/* ... */] });
 }, [cart]);
 ```
 
@@ -303,7 +314,7 @@ The server-side stash runs in the same network round-trip as the cart mutation i
 
 1. Visit `<site>.com/?tj_clickid=TEST_001&gclid=GCL_TEST&fbclid=FB_TEST` in incognito.
 2. Add any item to cart (any flow — Add-to-Cart drawer, /cart page, or "Buy now").
-3. In DevTools Network → the most recent `/cart` or `/cart/<id>:<qty>` request's response cart should now carry the `_*` attributes.
+3. Reload the cart (or check the next `GET /api/cart` response in DevTools Network): the cart's `attributes` should now carry the `_*` keys. For Buy-now, check the order in step 5 instead (the permalink redirects straight to checkout).
 4. Complete checkout with the Bogus Gateway.
 5. **Shopify Order Admin → Additional Details** lists every populated key.
 6. **Meta Events Manager → Test Events**: the Purchase event shows `fbp` / `fbc` populated. Match-quality score for the Purchase event goes up.
@@ -323,7 +334,7 @@ hydration starts (~50–200ms)
   ↓
 useEffect runs → captureAttributionFromUrl() writes segai_attr cookie  ← LATE
   ↓
-user clicks "Buy now" → POST /cart/... with the cookie
+user clicks "Buy now" → GET /cart/<id>:<qty> with the cookie
 ```
 
 If the user clicks faster than hydration completes, the cookie isn't set yet → cart-attribute stash sees an empty cookie → empty attrs on cart. This is a separate issue from what this doc covers. Options:
@@ -335,7 +346,7 @@ If the user clicks faster than hydration completes, the cookie isn't set yet →
    const urlAttrs = buildAttributionCartAttrsFromSearch(url.search); // mirror function
    const merged = mergeCartAttrs(urlAttrs, cookieAttrs); // url wins on absent keys
    ```
-   (Doesn't help the POST /cart action path because the request URL there is `/cart` with no attribution params.)
+   (Doesn't help the `POST /api/cart` path because that request URL carries no attribution params.)
 
 For most flows where the user lands, browses, then converts, hydration completes long before any cart interaction. The race only matters for extremely fast "land → click Buy now" flows.
 

@@ -4,7 +4,22 @@ CSP is the most common blocker for "my tracking works locally but not in prod". 
 
 ## Hydrogen's CSP — where it lives
 
-Hydrogen's `createContentSecurityPolicy()` builds the CSP header from a config object. In a Weaverse-based Hydrogen project the config is at `app/weaverse/csp.ts`; in a vanilla Hydrogen project it's typically inline in `entry.server.tsx`.
+Hydrogen 2026.10 removed `createContentSecurityPolicy`, `NonceProvider` and `useNonce` from `@shopify/hydrogen`. Pilot ports them to `app/utils/csp.ts` with the same header semantics: `generateNonce()`, `createContentSecurityPolicy(nonce, directives, { checkoutDomain, storeDomain })` (returns the header string; each directive you pass extends the defaults, and the nonce goes into `scriptSrc`), `NonceProvider` and `useNonce()`. `entry.server.tsx` builds the header; in a Weaverse project the extra directives come from `getWeaverseCsp()` in `app/weaverse/csp.ts`:
+
+```tsx
+// app/entry.server.tsx (Pilot, trimmed)
+import { createContentSecurityPolicy, generateNonce, NonceProvider } from "~/utils/csp";
+import { getWeaverseCsp } from "~/weaverse/csp";
+
+const nonce = generateNonce();
+const header = createContentSecurityPolicy(nonce, getWeaverseCsp(request, context.env), {
+  checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || context.env?.PUBLIC_STORE_DOMAIN,
+  storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
+});
+// render <NonceProvider value={nonce}><ServerRouter … nonce={nonce} /></NonceProvider>
+```
+
+The defaults already cover `'self'`, `cdn.shopify.com`, `monorail-edge.shopifysvc.com` and the checkout/store domains in `connectSrc`. Pass the same nonce to `<ShopifyScripts nonce={nonce}>` in `app/root.tsx`.
 
 The default config is too restrictive for any storefront with ads/analytics. You'll need to allow at minimum:
 
@@ -19,8 +34,8 @@ The default config is too restrictive for any storefront with ads/analytics. You
 
 ```ts
 // app/weaverse/csp.ts
-export function getWeaverseCsp(request: Request, context: HydrogenRouterContextProvider) {
-  const weaverseHost = new URL(request.url).searchParams.get("weaverseHost") ?? context.env.WEAVERSE_HOST;
+export function getWeaverseCsp(request: Request, env: { WEAVERSE_HOST?: string }) {
+  const weaverseHost = new URL(request.url).searchParams.get("weaverseHost") ?? env.WEAVERSE_HOST;
   const weaverseHosts = ["*.weaverse.io", "*.shopify.com", "*.myshopify.com"];
   if (weaverseHost) weaverseHosts.push(weaverseHost);
 
@@ -71,9 +86,8 @@ export function getWeaverseCsp(request: Request, context: HydrogenRouterContextP
       "content.hotjar.io",
       "wss://*.hotjar.com",
       "*.shopifysvc.com",
-      "https://cdn.shopify.com/",
-      "https://monorail-edge.shopifysvc.com",
-      `https://${context.env.PUBLIC_CHECKOUT_DOMAIN}`,
+      // cdn.shopify.com, monorail-edge and the checkout/store domains come
+      // from createContentSecurityPolicy()'s defaults (app/utils/csp.ts)
       ...weaverseHosts,
     ],
     styleSrc: [...weaverseHosts, "https://static.hotjar.com"],
@@ -113,6 +127,8 @@ Solutions:
 
 ```tsx
 // app/root.tsx
+import { useNonce } from "~/utils/csp";
+
 const nonce = useNonce();
 
 return (
@@ -142,14 +158,14 @@ return (
 );
 ```
 
-**Do NOT use Hydrogen's `<Script waitForHydration>` for GTM.** It can't take a nonce, which prevents `'strict-dynamic'` from working, AND it hides GTM from Tag Assistant standalone scans (which detect GTM by reading the initial HTML).
+**Do NOT inject GTM with a nonce-less, post-hydration script loader** (classic Hydrogen's `<Script waitForHydration>` was the usual culprit). Without the nonce, `'strict-dynamic'` can't trust gtm.js, and a post-hydration injection hides GTM from Tag Assistant standalone scans (which detect GTM by reading the initial HTML).
 
 ## Report-only vs enforced CSP
 
 - **`Content-Security-Policy-Report-Only`** — violations are logged in the console and reported to your endpoint, but nothing is actually blocked. Use this during initial rollout while you iron out the directive list.
 - **`Content-Security-Policy`** — enforced. Violating scripts are blocked.
 
-Hydrogen's `createContentSecurityPolicy()` returns the header but doesn't set the response header — you choose which to use in `entry.server.tsx`:
+`createContentSecurityPolicy()` (`app/utils/csp.ts`) returns the header but doesn't set the response header — you choose which to use in `entry.server.tsx`. Pilot ships report-only:
 
 ```ts
 // During rollout — report only, nothing blocked

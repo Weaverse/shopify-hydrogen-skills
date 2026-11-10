@@ -12,16 +12,16 @@ Real bugs encountered in production. Read this first when something isn't workin
 
 ## "GA4 shows view_item → purchase, skipping view_cart and add_to_cart entirely"
 
-**Cause #1:** Buy-now buttons that use Shopify cart permalinks (`/cart/{variantId}:{quantity}?checkout`) teleport directly to Shopify's checkout subdomain. They bypass Hydrogen's cart, so:
+**Cause #1:** Buy-now buttons that use Shopify cart permalinks (`/cart/{variantId}:{quantity}`) teleport directly to Shopify's checkout subdomain. They bypass the cart store, so:
 
-- Hydrogen's `AnalyticsEvent.PRODUCT_ADD_TO_CART` never dispatches (nothing called `cart.linesAdd`).
-- The Hydrogen cart's checkout button is never clicked, so `AnalyticsEvent.CART_VIEWED` / `begin_checkout` doesn't fire either.
+- `useCartAnalytics()` never publishes `AnalyticsEvent.PRODUCT_ADD_TO_CART` (the cart store never saw a change).
+- The cart's checkout button is never clicked, so `AnalyticsEvent.CART_VIEWED` / `begin_checkout` doesn't fire either.
 
 **Fix:** In the Buy-now `onClick`, manually fire both:
 
 ```tsx
 <a
-  href={`/cart/${variantId}:${quantity}?checkout`}
+  href={`/cart/${variantId}:${quantity}`}
   onClick={() => {
     trackEvent({ event_name: "add_to_cart", custom_data: { currency, value, items } });
     trackEvent({ event_name: "begin_checkout", custom_data: { currency, value, items } });
@@ -33,7 +33,7 @@ Real bugs encountered in production. Read this first when something isn't workin
 
 `sendBeacon` survives the navigation that follows. Each `trackEvent` returns its own UUID `event_id`; they're independent events for dedup purposes.
 
-**Cause #2 (related):** Hydrogen's `PRODUCT_ADD_TO_CART` is dispatched by **diffing cart state after revalidation**, which has unreliable timing. Events often miss GA4 DebugView entirely. **Fix:** fire `add_to_cart` directly from the button onClick, not via the Hydrogen subscriber.
+**Cause #2 (related):** the bus's `PRODUCT_ADD_TO_CART` is published by `useCartAnalytics()` only after the cart store **confirms** the change with Shopify. A navigation that follows the click (Buy now, a checkout redirect) can unload the page first, so the event often never reaches GA4. **Fix:** fire `add_to_cart` directly from the button onClick with `trackEvent()` (sendBeacon), not from a bus destination.
 
 ## "Meta CAPI shows no AddToCart events"
 
@@ -45,31 +45,33 @@ Real bugs encountered in production. Read this first when something isn't workin
 
 ## "view_item dataLayer push doesn't fire on PDP"
 
-**Cause:** `<Analytics.ProductView>` is conditionally rendered:
+**Cause:** the product view tracker is conditionally rendered (classic Hydrogen: `<Analytics.ProductView>`; on 2026.10 the same bug happens with a route tracker that publishes `PRODUCT_VIEWED`):
 
 ```tsx
-{selectedVariant && <Analytics.ProductView data={...} />}
+{selectedVariant && <ProductView products={[...]} />}
 ```
 
-For combined listings (or any product where the variant resolves after hydration), `selectedVariant` is `null` on first render. The analytics component never mounts and `PRODUCT_VIEWED` doesn't dispatch.
+For combined listings (or any product where the variant resolves after hydration), `selectedVariant` is `null` on first render. The tracker never mounts and `PRODUCT_VIEWED` isn't published. A tracker that publishes only when `products.length > 0` has the same failure if it builds an empty list.
 
-**Fix:** Remove the gate. Use safe fallbacks for variant-specific fields:
+**Fix:** Render it unconditionally and fall back to the first available variant. The bus's `ProductPayload` needs `price` as a `MoneyV2`:
 
 ```tsx
-<Analytics.ProductView
-  data={{
-    products: [{
-      id: product.id,
-      title: product.title,
-      price: selectedVariant?.price?.amount || "0",
-      vendor: product.vendor,
-      variantId: selectedVariant?.id || "",
-      variantTitle: selectedVariant?.title || "",
-      quantity: 1,
-    }],
-  }}
+const variant = selectedVariant ?? product.selectedOrFirstAvailableVariant;
+
+<ProductView
+  products={[{
+    id: product.id,
+    title: product.title,
+    price: variant?.price ?? product.priceRange.minVariantPrice,
+    vendor: product.vendor,
+    variantId: variant?.id ?? "",
+    variantTitle: variant?.title ?? "",
+    quantity: 1,
+  }]}
 />
 ```
+
+`ProductView` here is Pilot's tracker from `app/components/root/analytics-views.tsx`, which calls `window.Shopify.analytics.publish(AnalyticsEvent.PRODUCT_VIEWED, { products })` once per URL.
 
 ## "GTM Container Diagnostics: Unsupported tag implementation detected on Shopify"
 
@@ -81,9 +83,9 @@ For combined listings (or any product where the variant resolves after hydration
 
 ## "Tag Assistant standalone says 0 Google tags found"
 
-**Cause:** GTM is loaded via Hydrogen's `<Script waitForHydration>` (or `requestIdleCallback`-based defer). The `<script>` tag is injected AFTER React hydrates, so Tag Assistant's initial HTML scan sees nothing.
+**Cause:** GTM is injected after hydration (classic Hydrogen's `<Script waitForHydration>`, a `requestIdleCallback` defer, or an intent-based lazy loader like Pilot's `CustomAnalytics`). The `<script>` tag is added AFTER React hydrates, so Tag Assistant's initial HTML scan sees nothing.
 
-**Fix:** Load GTM as a regular `<script async nonce={nonce}>` in `<head>` instead. See [`gtm-meta-implementation.md`](./gtm-meta-implementation.md) §1. Alternative: verify via GTM Preview's "Connected" mode (which uses runtime postMessage, doesn't care when the script loaded).
+**Fix:** Load GTM as a regular `<script async nonce={nonce}>` in `<head>` instead (a deliberate performance trade-off if you lazy-load it today). See [`gtm-meta-implementation.md`](./gtm-meta-implementation.md) §1. Alternative: verify via GTM Preview's "Connected" mode (which uses runtime postMessage, doesn't care when the script loaded).
 
 ## "Custom Events Pixel for Meta double-fires Purchase"
 
@@ -166,11 +168,11 @@ For **Purchase** specifically: do NOT just skip it. Purchase is the most attribu
 
 **If you really want partial coverage:** generate a stable fallback client_id from `crypto.randomUUID()` per session, store in `sessionStorage`, and use it as the fallback. Be aware that these sessions show as "Direct / None" and may inflate session counts.
 
-## "_shopify_essential cookie disables Oxygen full-page cache"
+## "`Set-Cookie` disables Oxygen full-page cache"
 
-**Cause:** Hydrogen's Storefront API client attaches `Set-Cookie: _shopify_essential=...` to every response that ran `storefront.query()`. Oxygen FPC's contract disallows `Set-Cookie` on cacheable responses, so even with a correct `Oxygen-Cache-Control` header you get `oxygen-cache-status: uncacheable`.
+**Cause:** Oxygen FPC's contract disallows `Set-Cookie` on cacheable responses, so even with a correct `Oxygen-Cache-Control` header you get `oxygen-full-page-cache: uncacheable`. On classic Hydrogen the Storefront API client's `_shopify_essential` cookie did this on every page; on 2026.10 the usual culprits are a loader that writes the session, or personalized data (cart, customer token) loaded on the server.
 
-**Fix:** In `entry.server.tsx`, strip `Set-Cookie` from responses that opted into FPC. See [`oxygen-full-page-cache.md`](./oxygen-full-page-cache.md).
+**Fix:** Keep documents anonymous (cart and customer token load after hydration) and let `server.ts` own cookies: it commits the session only when it changed and calls `requestContext.applyResponseHeaders()`. Don't strip `Set-Cookie` by hand on 2026.10. See [`oxygen-full-page-cache.md`](./oxygen-full-page-cache.md).
 
 ## "Shopify Plus checkout doesn't get my GTM container"
 
@@ -185,7 +187,7 @@ For **Purchase** specifically: do NOT just skip it. Purchase is the most attribu
 
 ## "View Source has no GA4 / GTM scripts but they DO load"
 
-Probably normal. `<Script waitForHydration>`, `requestIdleCallback`, and most analytics defer patterns inject scripts via DOM manipulation AFTER initial HTML parse. View Source shows initial HTML only; DevTools → Elements shows the post-hydration DOM, which DOES include the injected scripts.
+Probably normal. Post-hydration loaders, `requestIdleCallback`, and most analytics defer patterns inject scripts via DOM manipulation AFTER initial HTML parse. View Source shows initial HTML only; DevTools → Elements shows the post-hydration DOM, which DOES include the injected scripts.
 
 To verify: in DevTools → Network → filter `gtm.js` → reload. Status 200 = GTM is loading.
 
@@ -256,50 +258,55 @@ const order = JSON.parse(rawBody);  // ← parse AFTER verification
 
 **Cause:** The Shopify Orders webhook is a server-to-server POST from Shopify's infrastructure to your endpoint. **It carries none of the user's browser cookies.** Any forwarder that reads identifiers from request context (the natural pattern for the `/api/track` browser endpoint, e.g. `ctx.fbp = req.cookies._fbp`) will silently get empty values on the webhook path. No error thrown; the forwarder just sends a worse-quality event.
 
-**Fix:** Stash every identifier into `cart.note_attributes` server-side, on the same network round-trip as the cart mutation. Webhook reads them back from `order.note_attributes`. Full pattern — including the `_ga`/`_fbp`/`_fbc` cookie readers, the cart-action handler, and the **second cart entry path** that catches buy-now flows — lives in [`cart-attribute-stash.md`](./cart-attribute-stash.md).
+**Fix:** Stash every identifier into `cart.note_attributes` server-side, on the same network round-trip as the cart mutation. Webhook reads them back from `order.note_attributes`. Full pattern — including the `_ga`/`_fbp`/`_fbc` cookie readers, the `POST /api/cart` handler, and the **second cart entry path** that catches buy-now flows — lives in [`cart-attribute-stash.md`](./cart-attribute-stash.md).
 
 ## "Cart attributes are empty for Buy-now purchases only"
 
 **Symptom:** Normal Add-to-Cart → cart drawer → checkout works perfectly. The order's `note_attributes` has every identifier you stash. But "Buy now" purchases (the button that goes straight from PDP to checkout) consistently land with `note_attributes: []` / `customAttributes: []` in the Shopify SubmitForCompletion mutation. The TJ / GoAffpro / Meta CAPI forwarders skip silently.
 
-**Cause:** "Buy now" buttons typically use Shopify's cart-permalink pattern `/cart/<variantId>:<qty>?checkout`, which is handled by a LOADER (`app/routes/cart/lines.tsx`) that calls `cart.create()` and immediately redirects. **It never touches the POST `/cart` action handler**, so any attribution-stash logic placed there never runs for this flow. Standard Hydrogen templates have this gap by default.
+**Cause:** "Buy now" buttons typically use Shopify's cart-permalink pattern `/cart/<variantId>:<qty>`. On Hydrogen 2026.10 that request never reaches `POST /api/cart`: either Hydrogen's own permalink handler answers it, or (in Pilot, for permalinks without a `payment` param) a LOADER in `app/routes/cart/lines.tsx` creates the cart with `cartQueries.cartCreate` and immediately redirects. Any attribution-stash logic placed only around `/api/cart` never runs for this flow.
 
-**Fix:** Add the same stash to `lines.tsx` before the `cart.create()` call. Shopify's `cartCreate` mutation accepts `attributes` in the same input as `lines`, so it's a single round-trip:
+**Fix:** Serve permalinks from your own `lines.tsx` loader (Pilot's `server.ts` shows how to skip Hydrogen's handler for them) and add the stash to its `cartCreate` input. Shopify's `cartCreate` accepts `attributes` in the same input as `lines`, so it's a single round-trip:
 
 ```ts
+import { cartQueries } from "@shopify/hydrogen";
 import { buildAttributionCartAttrsFromCookies } from "~/utils/attribution";
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const { cart } = context;
-  // ... parse lines
+  const { storefront } = context;
+  // ... parse linesMap from params.lines
   const attributionAttrs = buildAttributionCartAttrsFromCookies(
     request.headers.get("Cookie"),
   );
-  const result = await cart.create({
-    lines: linesMap,
-    discountCodes: discountArray,
-    ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
+  const result = await storefront.graphql(cartQueries.cartCreate, {
+    variables: {
+      input: {
+        lines: linesMap,
+        buyerIdentity: { countryCode: storefront.i18n.country },
+        ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
+      },
+    },
   });
-  // ... redirect to checkout
+  // ... set the cart cookie, redirect to checkout
 }
 ```
 
-Audit your own routes for any other cart-mutating code path (e.g. a `/cart/upsell` endpoint, share-cart feature) and apply the same pattern there.
+Permalinks with `payment` (Shop Pay) stay with Hydrogen's handler and get no app-side stash. Audit your own handlers and routes for any other cart-mutating code path (e.g. an upsell endpoint, share-cart feature) and apply the same pattern there.
 
 ## "3rd-party affiliate tracker's loader.js is POSTing to /cart/update.js and getting 405"
 
 **Symptom:** Browser console shows `POST https://yoursite.com/cart/update.js 405` from a script like `api.goaffpro.com/loader.js`. The request body looks like `attributes[__ref]=AFFILIATE_CODE&attributes[__sub_id]=...`.
 
-**Cause:** Affiliate trackers (GoAffpro, Refersion, etc.) were designed for **Shopify Liquid themes**, which expose AJAX cart endpoints like `/cart/update.js`, `/cart/add.js`, `/cart.js`. Hydrogen has none of these — its cart routes use loaders/actions on `/cart` (no `.js` suffix). Their loader's auto-stash of attribution into cart attributes silently fails.
+**Cause:** Affiliate trackers (GoAffpro, Refersion, etc.) were designed for **Shopify Liquid themes**, which expose AJAX cart endpoints like `/cart/update.js`, `/cart/add.js`, `/cart.js`. A Hydrogen 2026.10 storefront serves its cart from `/api/cart` instead, so these Liquid endpoints don't exist there. Their loader's auto-stash of attribution into cart attributes silently fails.
 
 **Fix:** Two complementary approaches:
 
 1. **Don't rely on their tracker for cart attributes.** Implement the server-side cart-attribute stash yourself (see [`cart-attribute-stash.md`](./cart-attribute-stash.md)). Capture the same identifiers their loader captures (typically `?ref=` / `?aff=` / `?gfp_ref=` URL params) into your own attribution cookie, then stash from that cookie into cart attrs on the server. Their `/cart/update.js` 405 becomes harmless noise.
 
-2. **Optionally silence the 405** by adding a Hydrogen route that 204s the request:
+2. **Optionally silence the 405** by adding a resource route that 204s the request (register it in `app/routes.ts`, e.g. `route("cart/update.js", "routes/cart/update-js.ts")`):
 
    ```ts
-   // app/routes/cart/update.js.ts  (or app/routes/cart.update[.]js.tsx in older templates)
+   // app/routes/cart/update-js.ts
    export async function action() { return new Response(null, { status: 204 }); }
    export async function loader() { return new Response(null, { status: 204 }); }
    ```
