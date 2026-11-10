@@ -34,7 +34,7 @@ skills/
       check_docs_helpers.mjs       # Boundary checks for the helpers (no network)
   weaverse-hydrogen/               # Weaverse CMS + Hydrogen fundamentals
     SKILL.md
-    references/                    # 13 deep-dive reference files
+    references/                    # 15 deep-dive reference files
     examples/                      # 4 production-ready code examples
   hydrogen-cookbooks/              # Feature implementation guides
     SKILL.md
@@ -80,7 +80,7 @@ Instead of baking static API docs into skill files (which go stale), this repo s
 
 Usage:
 ```bash
-node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "createHydrogenContext"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "handleShopifyRoutes"
 node skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs "component schema"
 node skills/shopify-hydrogen/scripts/get_weaverse_page.mjs "development-guide/component-schema"
 ```

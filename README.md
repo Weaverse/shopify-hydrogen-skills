@@ -4,6 +4,8 @@ Agent skills for building, maintaining, and upgrading Shopify Hydrogen storefron
 
 > **Why skills, not docs?** Skills are concise, agent-optimized knowledge that your coding agent loads before working on a task — structured for LLMs, not humans. Pair them with live doc search for the best results.
 
+> **Versions.** The skills target **Hydrogen 2026.10** (`@shopify/hydrogen` as a request-handler library), React Router 7 and **`@weaverse/hydrogen` 6** (imports from `@weaverse/hydrogen/react-router`), with [Pilot](https://github.com/Weaverse/pilot) `main` as the reference implementation. Classic Hydrogen (2026.4 and earlier) and `@weaverse/hydrogen` 5 appear only in the upgrade and migration guides.
+
 ## Quick Install
 
 ```bash
@@ -21,7 +23,7 @@ For manual per-agent setup, see [INSTALL.md](INSTALL.md).
 | Skill | What the agent learns | When to load |
 |-------|----------------------|--------------|
 | [`setup-weaverse-project`](./skills/setup-weaverse-project/SKILL.md) | Fast new-project onboarding — CLI-first scaffold, demo-store boot before credentials, generated `SESSION_SECRET`, GitHub repo, Builder preview connection | Starting a brand-new Weaverse Hydrogen storefront or running a theme locally for the first time |
-| [`shopify-hydrogen`](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen APIs — `createHydrogenContext`, cart handler, caching, pagination, SEO, CSP | Working with `@shopify/hydrogen` APIs |
+| [`shopify-hydrogen`](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen 2026.10 APIs — `server.ts` request lifecycle, `handleShopifyRoutes`, `storefront.graphql(gql())` with explicit cache, cart store, Customer Account handlers | Working with `@shopify/hydrogen` APIs |
 | [`weaverse-hydrogen`](./skills/weaverse-hydrogen/SKILL.md) | Weaverse components, schemas, loaders, theming, deployment | Any Hydrogen + Weaverse project |
 | [`hydrogen-cookbooks`](./skills/hydrogen-cookbooks/SKILL.md) | Step-by-step guides — bundles, combined listings, 3D models, customer accounts, performance | Building specific features |
 | [`hydrogen-upgrades`](./skills/hydrogen-upgrades/SKILL.md) | Breaking changes and migration steps for Hydrogen framework versions | Upgrading Hydrogen framework |
@@ -56,8 +58,8 @@ Instead of baking static API docs into skill files (which go stale), this repo s
 
 ```bash
 # Search Shopify Hydrogen docs (shopify.dev)
-node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "createHydrogenContext"
-node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "CartForm actions"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "handleShopifyRoutes"
+node skills/shopify-hydrogen/scripts/search_shopify_docs.mjs "createCartServerHandlers"
 
 # Search Weaverse docs (docs.weaverse.io)
 node skills/shopify-hydrogen/scripts/search_weaverse_docs.mjs "component schema"
@@ -96,7 +98,7 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │
 │   ├── weaverse-hydrogen/         # Weaverse CMS integration
 │   │   ├── SKILL.md
-│   │   ├── references/            # 13 deep-dive guides
+│   │   ├── references/            # 15 deep-dive guides
 │   │   └── examples/              # Production-ready component code
 │   │
 │   ├── hydrogen-cookbooks/        # Feature recipes
@@ -105,7 +107,7 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │
 │   ├── hydrogen-upgrades/         # Framework version migrations
 │   │   ├── SKILL.md
-│   │   └── references/            # 2024.4.7 → … → 2026.4.7
+│   │   └── references/            # 2024.4.7 → … → 2026.10.2
 │   │
 │   ├── theme-update/              # Pilot theme updater
 │       ├── SKILL.md

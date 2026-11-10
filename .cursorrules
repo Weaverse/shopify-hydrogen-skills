@@ -7,6 +7,8 @@ description: "Skills for building, upgrading, and maintaining Shopify Hydrogen s
 
 Agent skills for working with Shopify Hydrogen storefronts — covering core framework patterns, Weaverse CMS integration, feature cookbooks, and upgrade guides.
 
+Skills target Hydrogen 2026.10 and `@weaverse/hydrogen` 6 (imports from `@weaverse/hydrogen/react-router`); classic Hydrogen and Weaverse 5 appear only in upgrade and migration guides.
+
 ## Live Docs
 
 This repo ships scripts for fetching live documentation from authoritative sources:
@@ -28,7 +30,7 @@ Use these when you need the latest API references, not the offline references.
 |-------|-------------|--------------|
 | [setup-weaverse-project](./skills/setup-weaverse-project/SKILL.md) | Fast new-project onboarding — CLI scaffold, demo-store boot before credentials, Hydrogen-app store linking + `env pull`, GitHub push, Weaverse MCP live-edit setup, full skills-pack install | Starting a brand-new Weaverse Hydrogen storefront |
 | [weaverse-hydrogen](./skills/weaverse-hydrogen/SKILL.md) | Weaverse CMS integration — components, context-aware schemas, loaders, theming, Hydrogen fundamentals | Any Hydrogen + Weaverse project work |
-| [shopify-hydrogen](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen APIs — createHydrogenContext, cart, caching, pagination, SEO, CSP | Working with Hydrogen framework APIs |
+| [shopify-hydrogen](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen 2026.10 APIs — server.ts lifecycle, handleShopifyRoutes, storefront.graphql with explicit cache, cart store, Customer Account handlers | Working with Hydrogen framework APIs |
 | [hydrogen-cookbooks](./skills/hydrogen-cookbooks/SKILL.md) | Step-by-step guides for building common Hydrogen features | Building specific features |
 | [hydrogen-upgrades](./skills/hydrogen-upgrades/SKILL.md) | Hydrogen version migration guides and upgrade process | Upgrading Hydrogen |
 | [theme-update](./skills/theme-update/SKILL.md) | Pilot theme update — detect version, plan changes, preserve customizations, verify build | Updating a customer's Pilot theme to a newer release |
