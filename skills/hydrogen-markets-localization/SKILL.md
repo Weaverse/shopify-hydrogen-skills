@@ -43,6 +43,22 @@ Use repository references only as an offline fallback. Never infer current Shopi
 - Emit canonical and hreflang entries only for routes proven equivalent in every advertised market. Omit uncertain alternates.
 - Treat Shopify Markets enablement and readback as release prerequisites. Application configuration cannot make an unavailable Shopify market real.
 
+## Hydrogen 2026.10 + Weaverse 6 wiring
+
+On Hydrogen 2026.10 there is no `createHydrogenContext`: `server.ts` and `app/.server/context.ts` build the request context, so the market flows through code you own. Pilot `main` is the reference; trace the same seams in any storefront:
+
+| Seam | Pilot implementation |
+|---|---|
+| Market list and path helpers | `SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `resolveLocale`, `localizePath`, `delocalizePath`, `isUnsupportedMarketPath`, `providerLanguageFor` in `app/utils/locale.ts` |
+| Request market | `resolveRequestLocale(request)` in `app/.server/storefront.ts`: the path prefix for page requests; for the unprefixed Hydrogen handler paths (`/api/*`, `/account/login\|logout\|refresh`) the same-origin `Referer`, and `return_to` for `/account/login`; else the default market |
+| Shopify context | `createRequestStorefront()` gives the request-scoped client `i18n` with Shopify's **provider** language (e.g. `ZH_TW`); `storefront.graphql()` fills `$country`/`$language` from it, so never pass them in `variables` |
+| Weaverse context | `new WeaverseClient({ storefront, locale: resolveRequestLocale(request), ... })` in `app/.server/context.ts`. The `locale` option (`@weaverse/hydrogen` 6.1+, `{ language, country, pathPrefix }`) carries the **public** market for Translation Manager, page requests and Studio's `requestInfo.i18n`, while the storefront client keeps the provider language. Without it Weaverse reads `storefront.i18n` |
+| Unsupported prefixes | `app/routes.ts` wraps `:locale?` pages in the `routes/market-guard.ts` layout (loader throws 404, rendered by the root `ErrorBoundary`) and resource routes in `routes/market-guard-resources.ts` (middleware 404) |
+| Redirects | On a 404, `server.ts` calls `marketAwareRedirect()` (`app/.server/market-redirect.ts`) around `handleShopifyRedirects()`: delocalizes the lookup, relocalizes the target, and answers single-fetch `.data` navigations; it skips unsupported markets |
+| Cart country | Pilot's `POST /api/cart` handler runs `syncCartCountry()` before delegating to Hydrogen's cart handler; the country selector posts to `POST /api/cart/buyer-identity`; `/cart/checkout` syncs again before redirecting (`app/.server/cart.ts`, `app/routes/cart/checkout.tsx`) |
+| Customer Account | Login links carry `return_to` (localized) and `locale`; logout links go to `/account/logout?return_to=<localized home>` and Shopify's logout uses it as `postLogoutRedirectUri` (`app/utils/customer-account.ts`, `app/.server/customer-account.ts`) |
+| Shopify scripts | `<ShopifyScripts i18n={...}>` is built per market in the root loader; after a client-side market switch `syncShopifyMarket()` (`app/utils/shopify.ts`) updates `window.Shopify` country, currency, locale and `routes.root` |
+
 ## Procedure
 
 ### 1. Trace before editing
@@ -50,14 +66,15 @@ Use repository references only as an offline fallback. Never infer current Shopi
 Map the complete request path and every consumer of locale state:
 
 1. URL parser and route tree.
-2. `createHydrogenContext` Storefront i18n.
-3. Weaverse client/storefront i18n and `loadPage({locale})`.
+2. Request market resolution (including unprefixed Hydrogen handler paths) and the request-scoped Storefront client `i18n` built in `app/.server/context.ts`.
+3. `WeaverseClient` `locale` option versus `storefront.i18n`, and any `loadPage({ locale })` overrides.
 4. Root loader, `<html lang>` and `<html dir>`.
-5. Link helpers, forms, server redirects, Storefront redirects, and `.data` routes.
-6. Cart creation/mutations, buyer identity, country selector, and checkout redirect.
-7. Customer Account login, unauthorized redirect, and logout URI.
+5. Link helpers, forms, server redirects, `handleShopifyRedirects` lookups, and `.data` routes.
+6. Cart creation and `/api/cart` mutations, buyer identity, country selector, permalinks, and checkout redirect.
+7. Customer Account login (`return_to`, `locale`), unauthorized redirect, and logout URI.
 8. Canonical, hreflang, sitemap, robots, and CMS SEO composition.
 9. Translation Manager payloads, bundled translations, legacy settings, and Studio design-mode preview.
+10. `<ShopifyScripts>` `i18n` and the client-side `window.Shopify` market sync.
 
 Run caller/reference sweeps before removing old routes, settings, helpers, aliases, or translation readers. Remove a legacy path only after the canonical path covers every caller.
 
@@ -76,7 +93,8 @@ To add one market, change the canonical allowlist first, then prove every derive
 - Set server-rendered and hydrated `lang` and `dir` from the same resolved market.
 - Localize internal links and action URLs from the active URL, not a stale default loader value.
 - Delocalize before resolving market-neutral Shopify redirects, then relocalize same-origin targets. Preserve external redirects unchanged. Replace the active redirect header; never append a rewritten target beside the original.
-- Sync cart buyer identity country on cart creation and every mutation path that can enter checkout.
+- Sync cart buyer identity country on cart creation and every mutation path that can enter checkout. On 2026.10 those paths include Hydrogen's `/api/cart` handler (wrap it with an app handler registered first), cart permalinks, and the checkout hand-off.
+- Hydrogen-owned endpoints are exact, unprefixed paths. Resolve their market from the same-origin `Referer` (and `return_to` for login), never from a prefix they don't have.
 - Accept client redirect targets only when they are valid app-relative paths beginning with exactly one `/`. Reject schemes, protocol-relative forms, backslashes, control characters, and parse failures; fall back to the localized cart route.
 - Send Customer Account logout to the localized home. Derive the required allowlist of logout URIs, read back current Customer Account API configuration, and require explicit owner approval before registering or changing URIs.
 

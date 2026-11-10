@@ -174,7 +174,7 @@ The clone preview route is the verification checkpoint between scraping and sect
 
 ### What it is
 
-A single Hydrogen route file at `app/routes/clone-preview.$page.tsx` that renders the entire cloned page as React + Tailwind. It is:
+A single Hydrogen route file at `app/routes/clone-preview.$page.tsx`, registered in `app/routes.ts` (for example `route("clone-preview/:page", "routes/clone-preview.$page.tsx")` inside the page layout, as Pilot registers its routes), that renders the entire cloned page as React + Tailwind. It is:
 
 - **One file** — all visual blocks inline, no separate component files
 - **Responsive** — desktop and mobile layouts, matching the origin's breakpoints
@@ -185,7 +185,7 @@ A single Hydrogen route file at `app/routes/clone-preview.$page.tsx` that render
 ### Route structure
 
 ```tsx
-import type {MetaFunction} from '@remix-run/react';
+import type {MetaFunction} from 'react-router';
 
 export const meta: MetaFunction = () => {
   return [{title: 'Clone Preview — <page name>'}];

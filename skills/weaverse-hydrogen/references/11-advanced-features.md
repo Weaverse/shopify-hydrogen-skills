@@ -36,12 +36,12 @@ Data connectors let merchants bind dynamic data (product titles, prices, etc.) t
 Any data returned from a route loader automatically appears in Studio:
 
 ```tsx
-// app/routes/($locale).products.$handle.tsx
+// app/routes/products/product.tsx
 export async function loader({ params, context }: LoaderFunctionArgs) {
-  let product = await getProduct(params.handle);
+  let product = await getProduct(params.productHandle);
 
   // Custom API data → automatically available in Studio
-  let reviews = await fetch(`https://reviews-api.com/product/${params.handle}`)
+  let reviews = await fetch(`https://reviews-api.com/product/${params.productHandle}`)
     .then(res => res.json());
 
   return { product, reviews };
@@ -102,7 +102,7 @@ Create custom URL structures mapped to Weaverse page types.
 ### Custom Page Type
 
 ```tsx
-// app/routes/($locale).custom.$slug.tsx
+// app/routes/custom/page.tsx, registered in app/routes.ts as route('custom/:slug', ...)
 export async function loader({ context, params }: LoaderFunctionArgs) {
   let weaverseData = await context.weaverse.loadPage({
     type: 'CUSTOM',
@@ -113,7 +113,7 @@ export async function loader({ context, params }: LoaderFunctionArgs) {
 }
 
 export default function CustomPage() {
-  return <WeaverseHydrogenRoot />;
+  return <WeaverseContent />; // WeaverseHydrogenRoot wrapper from ~/weaverse
 }
 ```
 
@@ -122,17 +122,16 @@ export default function CustomPage() {
 Different products can use different templates:
 
 ```tsx
-// app/routes/($locale).products.$handle.tsx
+// app/routes/products/product.tsx
 export async function loader({ context, params }: LoaderFunctionArgs) {
-  let { product } = await context.storefront.query(PRODUCT_QUERY, {
-    variables: { handle: params.handle },
-  });
-
-  // Load Weaverse data — Weaverse Studio handles template assignment
-  let weaverseData = await context.weaverse.loadPage({
-    type: 'PRODUCT',
-    handle: params.handle,
-  });
+  let handle = params.productHandle;
+  let [{ product }, weaverseData] = await Promise.all([
+    context.storefront
+      .graphql(PRODUCT_QUERY, { variables: { handle }, cache: CACHE_DEFAULT })
+      .then(unwrapStorefront),
+    // Weaverse Studio handles template assignment
+    context.weaverse.loadPage({ type: 'PRODUCT', handle }),
+  ]);
 
   return { product, weaverseData };
 }
@@ -183,48 +182,7 @@ No special code needed — global sections use the same component system. Change
 
 Weaverse Studio requires specific CSP directives for the live preview to work.
 
-### CSP Helper
-
-```tsx
-// app/weaverse/csp.ts
-export function getWeaverseCsp(request: Request, context: AppLoadContext) {
-  return {
-    connectSrc: [
-      "'self'",
-      'https://weaverse.io',
-      'https://studio.weaverse.io',
-      'https://*.weaverse.io',
-    ],
-    imgSrc: [
-      "'self'",
-      'https://cdn.shopify.com',
-      'https://ucarecdn.com',
-    ],
-    frameSrc: [
-      'https://studio.weaverse.io',
-    ],
-    scriptSrc: [
-      "'self'",
-      'https://cdn.weaverse.io',
-    ],
-  };
-}
-```
-
-### Integration in entry.server.tsx
-
-```tsx
-import { createContentSecurityPolicy } from '@shopify/hydrogen';
-import { getWeaverseCsp } from '~/weaverse/csp';
-
-const { nonce, header, NonceProvider } = createContentSecurityPolicy({
-  ...getWeaverseCsp(request, context),
-  shop: {
-    checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN,
-    storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
-  },
-});
-```
+Pilot's `app/weaverse/csp.ts` (`getWeaverseCsp(request, env)`) adds Weaverse's hosts and, in design mode (`?weaverseHost=`), `frameAncestors: ['*']` plus `'unsafe-eval'` for the Studio bridge. Hydrogen 2026.10 removed `createContentSecurityPolicy`, `NonceProvider` and `useNonce`; Pilot ports them to `app/utils/csp.ts` and calls them from `entry.server.tsx`. Both files are shown in [09-deployment.md](09-deployment.md#content-security-policy-csp) and [01-project-structure.md](01-project-structure.md#entryservertsx).
 
 ---
 
@@ -255,12 +213,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 For experiments, use the optional [`@weaverse/experiments`](https://www.npmjs.com/package/@weaverse/experiments) package rather than hand-rolling cookie logic. It assigns each visitor to a variant **deterministically** (sticky without a per-experiment cookie — no flicker) and maps the variant to a `projectId`. The engine + `/server` adapter are framework-agnostic (web `Request`/`Headers`/`crypto`, zero deps); `/react` is an optional `react` peer.
 
 ```tsx
-// app/lib/weaverse/weaverse.server.ts
+// app/.server/context.ts (inside createAppContext)
 import { getExperiments } from '@weaverse/experiments/server';
-import { WeaverseClient } from '@weaverse/hydrogen';
-
-export function createWeaverseClient(args: CreateWeaverseClientArgs) {
-  let { hydrogenContext, request, cache, themeSchema, components } = args;
+import { WeaverseClient } from '@weaverse/hydrogen/react-router';
 
   // Deterministic, sticky assignment — no manual cookie handling.
   let { projectId, assignments, headers } = getExperiments(request, {
@@ -268,23 +223,22 @@ export function createWeaverseClient(args: CreateWeaverseClientArgs) {
       {
         id: 'green-theme-test',
         variants: [
-          { id: 'control', projectId: args.env.WEAVERSE_PROJECT_CONTROL },
-          { id: 'b', weight: 0.2, projectId: args.env.WEAVERSE_PROJECT_VARIANT_B }, // ~17%
+          { id: 'control', projectId: env.WEAVERSE_PROJECT_CONTROL },
+          { id: 'b', weight: 0.2, projectId: env.WEAVERSE_PROJECT_VARIANT_B }, // ~17%
         ],
       },
     ],
   });
 
   let weaverse = new WeaverseClient({
-    ...hydrogenContext, request, cache, themeSchema, components,
+    storefront, env, cache, waitUntil, request, themeSchema, components,
     projectId, // winning variant's project
   });
 
-  return { weaverse, assignments, headers }; // merge `headers` into the response
-}
+  // Return `assignments` with the app context and merge `headers` into the response in server.ts
 ```
 
-**Analytics:** pass `assignments` to `<Analytics.Provider customData>` so every event is segmented by variant, and fire exposure via `useAnalytics().publish('custom_experiment_viewed', …)` gated on `canTrack()`. See the `hydrogen-analytics-tracking` skill → "Experiment exposure".
+**Analytics:** segment events by variant and fire an exposure event once consent allows tracking. Hydrogen 2026.10 replaced `Analytics.Provider`/`useAnalytics` with `ShopifyScripts` and the `window.Shopify.analytics` bus; see the `hydrogen-analytics-tracking` skill → "Experiment exposure".
 
 > **Caching caveat (FPC):** Variant choice depends on the `_wv_vid` cookie, but Oxygen/CDN full-page caching keys on the URL and skips the worker on a cache hit — and a returning visitor's response carries no `Set-Cookie`. A cached page can therefore pin one variant for *every* visitor and corrupt the split. On experiment-driven routes, disable full-page caching or add `_wv_vid` to the cache key (`Vary`).
 
@@ -304,7 +258,7 @@ See the [Multi-Project Architecture Guide](https://docs.weaverse.io/guides/multi
 ### Judge.me Reviews
 
 ```tsx
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs) => {
   let { fetchWithCache, env } = weaverse;
 
   return await fetchWithCache(

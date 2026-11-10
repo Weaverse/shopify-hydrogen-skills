@@ -271,9 +271,9 @@ type WeaverseImage = {
 };
 ```
 
-Render with Hydrogen's `<Image>` component:
+Render with the theme's `<Image>` component. Hydrogen 2026.10 removed `Image` from `@shopify/hydrogen`; Pilot ports it to `app/components/image.tsx` (CDN `srcset` via `app/components/shopify-image.tsx`):
 ```tsx
-import { Image } from '@shopify/hydrogen';
+import { Image } from '~/components/image';
 <Image data={props.heroImage} sizes="100vw" />
 ```
 

@@ -18,7 +18,7 @@ Do not make the user create a GitHub repo, link a Shopify store, or paste tokens
 
 ## You Drive the CLI — The User Only Clicks Browser Flows
 
-The user (merchant or developer) should never have to type a CLI command. **You** run `shopify hydrogen` and `@weaverse/cli` under the hood. The Shopify CLI does real work (env pull, dev server, codegen, deploy) — drive it, do not reimplement it. `npm run dev` itself shells out to `shopify hydrogen dev`, so the CLI is always involved; just keep it invisible to the user.
+The user (merchant or developer) should never have to type a CLI command. **You** run `shopify hydrogen` and `@weaverse/cli` under the hood. The Shopify CLI does real work (`link`, `env pull`, `deploy`) — drive it, do not reimplement it. On Hydrogen 2026.10 themes (Pilot `v2026.11.7` and later) the dev server is plain Vite: `npm run dev` runs `vite dev --port 3456`, and there is no GraphQL codegen step (`npm run typecheck` validates queries with `hydrogen gql check`). Keep all of it invisible to the user.
 
 The human's job is limited to: approving browser flows, selecting the store in the shop picker, copying credentials, and supplying secrets. Never make them paste commands.
 
@@ -143,6 +143,8 @@ Now swap the demo store for the user's store. The **minimum vars needed to rende
 - `WEAVERSE_PROJECT_ID` — see Phase 4 (this is the only var that can't come from Shopify)
 
 `SESSION_SECRET` is still required by Hydrogen, but it is agent-generated. Everything else (`SHOP_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `PUBLIC_CHECKOUT_DOMAIN`, `PUBLIC_STOREFRONT_ID`, analytics, reviews) is **feature-complete extra** — set it *after* first success, never block on it.
+
+Customer Account login needs HTTPS locally: once `SHOP_ID` and `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` are set, test it with `npm run dev:https` (same port, served over local HTTPS) instead of `npm run dev`.
 
 ### One path: install the Hydrogen app and link the storefront
 

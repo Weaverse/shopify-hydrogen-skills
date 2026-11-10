@@ -1,6 +1,6 @@
 # Oxygen Full-Page Cache (FPC) for Hydrogen
 
-Tracking-adjacent because both touch `entry.server.tsx` response headers, and because the FPC contract is finicky enough that most teams fail to enable it on the first try.
+Tracking-adjacent because both touch the document response headers (`entry.server.tsx` and `server.ts`), and because the FPC contract is finicky enough that most teams fail to enable it on the first try.
 
 ## What FPC does
 
@@ -63,52 +63,34 @@ export function routeHeaders({ loaderHeaders }: { loaderHeaders: Headers }) {
 }
 ```
 
-### Surprise 2 — Shopify's `_shopify_essential` cookie disables FPC
+### Surprise 2 — any `Set-Cookie` disables FPC
 
-Hydrogen's Storefront API client attaches `Set-Cookie: _shopify_essential=...` to every response that called `storefront.query()`. This is session affinity for the Storefront API backend. **And it's enough on its own to mark every page response as `Uncacheable`** per condition (5) above.
+Condition (5) is the one that bites. On classic Hydrogen (2026.4 and earlier) the Storefront API client attached `Set-Cookie: _shopify_essential=...` to responses that called `storefront.query()`, and teams stripped `Set-Cookie` in `entry.server.tsx` to get any hits at all.
 
-You'll observe:
-- `Oxygen-Cache-Control: public, max-age=60, ...` ✅ in response
-- `Set-Cookie: _shopify_essential=...` ❌ also in response
-- `Oxygen-Cache-Status: Uncacheable` ❌ blocked
-
-The fix: **strip `Set-Cookie` from responses that opted into FPC**, in `entry.server.tsx`:
+On Hydrogen 2026.10 don't strip cookies by hand. `server.ts` owns the response boundary: it commits the session only when the request changed it, then calls `requestContext.applyResponseHeaders(response.headers)`, which applies the eligible Storefront API cookies and keeps personalized responses out of shared caches. A response that still carries `Set-Cookie` is simply not cached by Oxygen, which is the correct outcome. Pilot opts anonymous documents in from `entry.server.tsx` and leaves the cookie decision to that boundary:
 
 ```ts
-// app/entry.server.tsx
-export default async function handleRequest(
+// app/entry.server.tsx (Pilot, trimmed)
+import { getFullPageCacheControl } from "~/utils/full-page-cache";
+
+// … render with the nonce, then:
+responseHeaders.set("Content-Type", "text/html");
+responseHeaders.set("Content-Security-Policy-Report-Only", header);
+
+const fullPageCacheControl = getFullPageCacheControl(
   request,
   responseStatusCode,
-  responseHeaders,
-  reactRouterContext,
-  context,
-) {
-  // … existing render code …
-
-  responseHeaders.set("Content-Type", "text/html");
-  responseHeaders.set("Content-Security-Policy-Report-Only", cspHeader);
-
-  // FPC contract: strip Set-Cookie when the route opted into edge caching.
-  // Routes that DIDN'T opt in (cart, account, /api/*) keep their Set-Cookie
-  // writes intact, so the storefront session is still established on the
-  // first cart/account interaction.
-  const oxygenCacheControl = responseHeaders.get("Oxygen-Cache-Control");
-  if (
-    oxygenCacheControl &&
-    /\bpublic\b/.test(oxygenCacheControl) &&
-    responseHeaders.has("Set-Cookie")
-  ) {
-    responseHeaders.delete("Set-Cookie");
+  responseHeaders.get("Cache-Control"),
+);
+if (fullPageCacheControl) {
+  responseHeaders.set("Oxygen-Cache-Control", fullPageCacheControl);
+  if (!responseHeaders.has("Vary")) {
+    responseHeaders.set("Vary", "Accept-Encoding");
   }
-
-  return new Response(body, {
-    headers: responseHeaders,
-    status: responseStatusCode,
-  });
 }
 ```
 
-The check is conditional: only strip when the route declared `Oxygen-Cache-Control: public, ...`. Cart, account, checkout, `/api/*` etc. don't set that header and keep their `Set-Cookie` semantics intact.
+`getFullPageCacheControl()` (`app/utils/full-page-cache.ts`) returns `public, max-age=300, stale-while-revalidate=86400` only for a `GET` with status 200 that the app didn't mark `no-store`, outside `account`, `api`, `cart` and `discount` (after an optional market prefix), and without Weaverse Studio preview params (`isDesignMode`, `weaverseHost`, `weaverseProjectId`, `weaverseVersion`, `__revisionId`). Everything else gets no `Oxygen-Cache-Control`.
 
 ## Verification recipe
 After deploying FPC for the first time:
@@ -122,11 +104,10 @@ for i in 1 2; do
 done
 # Expected: miss (stored), then hit. Two more gotchas observed in production:
 #
-# 1. INTERMITTENT uncacheable: Hydrogen forwards Shopify tracking cookies
-#    (_shopify_y / _shopify_essential / …) from Storefront API subrequests —
-#    but only when the shop-analytics subrequest misses its own cache. So the
-#    same URL alternates between `miss` and `uncacheable`. The uncacheable
-#    responses are CORRECT (they carry Set-Cookie); don't chase them.
+# 1. INTERMITTENT uncacheable: Hydrogen forwards eligible Shopify cookies
+#    from Storefront API subrequests on some responses, so the same URL can
+#    alternate between `miss` and `uncacheable`. The uncacheable responses
+#    are CORRECT (they carry Set-Cookie); don't chase them.
 #
 # 2. NO HIT from a single client: the FPC appears replica/colo-local. Curl
 #    probes from one machine may show `miss` forever even though everything
@@ -139,13 +120,11 @@ done
 ```
 If you see `uncacheable` on every GET, dump the full response headers and check against the 7-condition contract above. The most common systematic failure is `Set-Cookie` (some code path on the route writes the session).
 ## Personalized data in the document blocks FPC at the root
-Before touching headers, audit the **root loader's deferred data**. Skeleton Hydrogen (and Pilot ≤2026.5) returns `cart: cart.get()` and `customerAccount.getAccessToken()` from the root loader — deferred values **stream into the HTML document**, so every page is personalized and caching it would serve one visitor's cart/token to another.
-The fix is a client-side bootstrap (reference implementation: [Weaverse/pilot#401](https://github.com/Weaverse/pilot/pull/401)):
-1. New `GET /api/cart` route returning `{ cart, customerAccessToken }` with `Cache-Control: no-store`.
-2. A client store (zustand) hydrated from that endpoint after mount; header cart badge, account button, and `Analytics.Provider` read the store.
-3. Root loader keeps only non-personalized data.
-Same pattern as Shopify's "Render a cart from client side" recipe. Until this is done, FPC headers are actively dangerous — do not enable them.
-Also note: **FPC cannot be purged without a redeploy.** Keep `max-age` short (60s) for CMS-driven pages; SWR does the heavy lifting.
+Before touching headers, audit the **root loader's data**. Classic Hydrogen templates (and Pilot ≤2026.5) returned `cart: cart.get()` and `customerAccount.getAccessToken()` from the root loader. Deferred values **stream into the HTML document**, so every page is personalized and caching it would serve one visitor's cart or token to another.
+
+On Hydrogen 2026.10 the fix is built into the cart store. Pilot renders `<CartProvider>` (from `createCartComponents()`) in `app/root.tsx` with **no** `initialData`, so the cart loads from Hydrogen's `/api/cart` handler after hydration; the header's account button reads the customer token from `GET /api/account/token` the same way. The root loader returns only per-market data (shop, menus, theme settings, `ShopifyScripts` `shop`/`i18n`), never per-shopper data. Don't reintroduce personalized data into root or route loaders without revisiting the FPC gate; until the document is anonymous, FPC headers are actively dangerous.
+
+Also note: **FPC cannot be purged without a redeploy.** Keep `max-age` short for CMS-driven pages (Pilot uses 300s, matching the Weaverse SDK's content freshness); SWR does the heavy lifting.
 
 ## Per-route cache strategy
 
@@ -166,7 +145,7 @@ Audit each cacheable route's loader chain for:
 
 - **`session.set` / `session.commit` calls** — these write Set-Cookie. Either remove from cacheable routes or move them to a deferred sub-fetch the cached HTML hydrates from.
 - **Customer-specific data inlined in the HTML** — customer name, "Welcome back, X", per-customer pricing, etc. If you need any of this, fetch it post-hydration via a client-side fetch (won't be cached) and render after.
-- **CSRF tokens** — these MUST be per-request, can't be cached. If your forms use CSRF, that token comes via a separate non-cached endpoint or via cookies (which the strip would remove — incompatible with FPC).
+- **CSRF tokens** — these MUST be per-request, can't be cached. If your forms use CSRF, that token comes via a separate non-cached endpoint, never inlined in cacheable HTML.
 
 CSP nonces are OK to cache — they're per-RESPONSE (not per-user), and the inline scripts referring to the nonce are part of the same response, so cached nonce + cached inline scripts stay consistent.
 
@@ -176,7 +155,7 @@ CSP nonces are OK to cache — they're per-RESPONSE (not per-user), and the inli
 - The route writes a session cookie that's required for downstream functionality (and you can't easily move the write elsewhere).
 - The route's data has tighter freshness requirements than your `max-age` (e.g. live inventory < 30s, real-time pricing for a stock chart).
 
-For these cases, lean on Hydrogen's **sub-request caching** (`storefront.CacheLong()`, `CacheShort()`) instead. Sub-request cache reduces the worker's Storefront API roundtrips even when the rendered HTML itself can't be edge-cached. Read [`hydrogen-cookbooks/performance-best-practices`](../../hydrogen-cookbooks/references/performance-best-practices.md) for that pattern.
+For these cases, lean on Hydrogen's **sub-request caching** instead: pass an explicit `cache` to every `storefront.graphql(doc, { variables, cache })` call (Hydrogen 2026.10 has no default; Pilot uses `CACHE_DEFAULT`/`CACHE_SHORT`/`CACHE_LONG` from `app/utils/cache.ts`, built on `Cache` from `@shopify/hydrogen`). Sub-request cache reduces the worker's Storefront API roundtrips even when the rendered HTML itself can't be edge-cached. Read [`hydrogen-cookbooks/performance-best-practices`](../../hydrogen-cookbooks/references/performance-best-practices.md) for that pattern.
 
 ## Debugging headers
 The status header observed live on Oxygen (June 2026) is **`oxygen-full-page-cache`**, not `oxygen-cache-status` — grep for both if tooling disagrees.

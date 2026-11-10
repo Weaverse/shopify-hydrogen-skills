@@ -1,6 +1,6 @@
 # SSR Performance: Worker Bundle & TTFB Measurement
 
-Production-verified on pilot.weaverse.dev (June 2026).
+Production-verified on pilot.weaverse.dev (June 2026). The bundle and measurement notes apply unchanged on Hydrogen 2026.10: Pilot `main` still ships the `resolveId` stub in `vite.config.ts`, next to the `localHttps()` and `oxygen()` plugins.
 
 ## The single-file worker inlines every dynamic import
 
@@ -99,4 +99,4 @@ Three mistakes that produce wrong conclusions:
 | Full-page cache hit | ~100–130ms (network-bound) |
 | Warm worker, subrequest caches warm | ~250–340ms (render floor) |
 | Cold isolate | +parse/compile of the server bundle — this is what the bundle diet shrinks |
-| First visit (tracking cookies → `Set-Cookie`) | always uncacheable, full SSR — inherent to Hydrogen analytics |
+| Any response with `Set-Cookie` | uncacheable, full SSR. On Hydrogen 2026.10, keep anonymous documents cookie-free: commit the session only when it changed, load the cart from `/api/cart` after hydration, and keep `ShopifyScripts` props per market, never per shopper |

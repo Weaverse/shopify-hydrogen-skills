@@ -7,7 +7,7 @@
 // 3. Add new components to the array after creating them
 // 4. Restart dev server after adding new components
 
-import type { HydrogenComponent } from "@weaverse/hydrogen";
+import type { WeaverseComponent } from "@weaverse/hydrogen/react-router";
 import * as BlogPosts from "~/sections/blog-posts";
 import * as CollectionBanner from "~/sections/collection-banner";
 import * as ContactForm from "~/sections/contact-form";
@@ -30,7 +30,7 @@ import * as SubHeading from "~/sections/shared/sub-heading";
 import * as Testimonials from "~/sections/testimonials";
 import * as VideoSection from "~/sections/video";
 
-export const components: HydrogenComponent[] = [
+export const components: WeaverseComponent[] = [
 	// Sections
 	HeroBanner,
 	FeaturedCollection,

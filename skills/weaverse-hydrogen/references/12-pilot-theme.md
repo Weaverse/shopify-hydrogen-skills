@@ -4,7 +4,7 @@
 
 ## Overview
 
-Pilot is the official Weaverse Hydrogen starter theme. It demonstrates best practices for building production-grade Shopify Hydrogen storefronts with Weaverse.
+Pilot is the official Weaverse Hydrogen starter theme. It demonstrates best practices for building production-grade Shopify Hydrogen storefronts with Weaverse. Pilot `main` runs on Hydrogen 2026.10 (`@shopify/hydrogen` ^2026.10.2) and `@weaverse/hydrogen` ^6.1, and its `AGENTS.md` is the most current summary of its conventions. Pilot's own copies of the cookbooks and upgrade guides live in `.guides/`.
 
 **GitHub:** https://github.com/Weaverse/pilot
 **Template:** `npx @weaverse/cli create --template=pilot`
@@ -12,10 +12,13 @@ Pilot is the official Weaverse Hydrogen starter theme. It demonstrates best prac
 ## Project Structure Conventions
 
 ```
-templates/pilot/
+pilot/
+├── server.ts               # Fetch handler: createAppContext → handleShopifyRoutes → React Router
 ├── app/
+│   ├── .server/            # context.ts (WeaverseClient), storefront.ts, cart.ts, customer-account.ts, ...
 │   ├── components/         # Shared UI (Section, Heading, Button, ProductCard, etc.)
-│   ├── graphql/            # Reusable GraphQL fragments
+│   ├── graphql/            # gql() fragments (fragments.ts) and queries (queries.ts)
+│   ├── utils/              # cache.ts (CACHE_*), storefront.ts (unwrapStorefront), csp.ts, ...
 │   ├── sections/           # 100+ registered Weaverse sections
 │   ├── weaverse/
 │   │   ├── components.ts   # All sections registered here
@@ -23,7 +26,8 @@ templates/pilot/
 │   │   ├── csp.ts          # Weaverse CSP config
 │   │   ├── style.tsx       # GlobalStyle component (CSS variables)
 │   │   └── index.tsx       # WeaverseContent wrapper
-│   └── routes/             # Standard Hydrogen routes
+│   ├── routes.ts           # Route config (:locale? prefix, market guard layouts)
+│   └── routes/             # Route modules
 ```
 
 ## Reusable Base Components
@@ -33,9 +37,8 @@ Pilot uses shared base components that sections build on:
 ### Section Component
 
 ```tsx
-// app/components/section.tsx
-import { forwardRef } from 'react';
-import { cn } from '~/lib/utils';
+// app/components/section.tsx (simplified)
+import { cn } from '~/utils/cn';
 
 export interface SectionProps {
   as?: React.ElementType;
@@ -47,10 +50,12 @@ export interface SectionProps {
   borderRadius?: number;
   backgroundColor?: string;
   children?: React.ReactNode;
+  ref?: React.Ref<HTMLElement>;
 }
 
-export let Section = forwardRef<HTMLElement, SectionProps>((props, ref) => {
+export function Section(props: SectionProps) {
   let {
+    ref,
     as: Tag = 'section',
     className,
     gap,
@@ -83,7 +88,7 @@ export let Section = forwardRef<HTMLElement, SectionProps>((props, ref) => {
       {children}
     </Tag>
   );
-});
+}
 ```
 
 ### Shared Layout Inputs
@@ -180,27 +185,24 @@ export let headingInputs = [
 
 ```tsx
 // app/sections/image-with-text/index.tsx
-import { forwardRef } from 'react';
-import { createSchema } from '@weaverse/hydrogen';
-import type { HydrogenComponentProps } from '@weaverse/hydrogen';
-import { Image } from '@shopify/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
+import type { WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
 import { Section, layoutInputs } from '~/components/section';
+import { cn } from '~/utils/cn';
 
-interface ImageWithTextProps extends HydrogenComponentProps {
+interface ImageWithTextProps extends WeaverseComponentProps {
   imagePosition: 'left' | 'right';
 }
 
-let ImageWithText = forwardRef<HTMLElement, ImageWithTextProps>((props, ref) => {
-  let { imagePosition, children, ...rest } = props;
-
+function ImageWithText({ ref, imagePosition, children, ...rest }: ImageWithTextProps) {
   return (
     <Section ref={ref} {...rest}>
-      <div className={`flex ${imagePosition === 'right' ? 'flex-row-reverse' : ''}`}>
+      <div className={cn('flex', imagePosition === 'right' && 'flex-row-reverse')}>
         {children}
       </div>
     </Section>
   );
-});
+}
 
 export default ImageWithText;
 
@@ -241,32 +243,33 @@ export let schema = createSchema({
 ### Data-Driven Section
 
 ```tsx
-// app/sections/featured-products/index.tsx
-import { createSchema } from '@weaverse/hydrogen';
-import type { ComponentLoaderArgs, HydrogenComponentProps } from '@weaverse/hydrogen';
+// app/sections/featured-products/index.tsx (simplified)
+import { gql } from '@shopify/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
+import type { WeaverseComponentLoaderArgs, WeaverseComponentProps } from '@weaverse/hydrogen/react-router';
 import { Section, layoutInputs } from '~/components/section';
 import { ProductCard } from '~/components/product/product-card';
-import Heading, { headingInputs } from '~/components/heading';
+import { CACHE_DEFAULT } from '~/utils/cache';
+import { unwrapStorefront } from '~/utils/storefront';
 
 type LoaderData = { collection: { handle: string } };
 
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<LoaderData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<LoaderData>) => {
   let { storefront } = weaverse;
   let handle = data?.collection?.handle;
 
   if (!handle) return null;
 
-  return await storefront.query(COLLECTION_QUERY, {
-    variables: {
-      handle,
-      first: 8,
-      language: storefront.i18n.language,
-      country: storefront.i18n.country,
-    },
-  });
+  // $country/$language are filled from the request; only pass your own variables
+  return unwrapStorefront(
+    await storefront.graphql(COLLECTION_QUERY, {
+      variables: { handle, first: 8 },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
 
-type Props = HydrogenComponentProps<Awaited<ReturnType<typeof loader>>> & LoaderData;
+type Props = WeaverseComponentProps<Awaited<ReturnType<typeof loader>>> & LoaderData;
 
 function FeaturedProducts(props: Props) {
   let { loaderData, children, ...rest } = props;
@@ -310,7 +313,7 @@ export let schema = createSchema({
   },
 });
 
-const COLLECTION_QUERY = `#graphql
+const COLLECTION_QUERY = gql(`
   query FeaturedCollection($handle: String!, $first: Int!, $language: LanguageCode, $country: CountryCode)
   @inContext(language: $language, country: $country) {
     collection(handle: $handle) {
@@ -328,8 +331,10 @@ const COLLECTION_QUERY = `#graphql
       }
     }
   }
-` as const;
+`);
 ```
+
+Pilot puts shared documents in `app/graphql/` and exports their result types as `StorefrontApi.ResultOf<typeof QUERY>`.
 
 ### Page-Restricted Section
 
@@ -338,9 +343,7 @@ export let schema = createSchema({
   type: 'related-products',
   title: 'Related Products',
   limit: 1,
-  enabledOn: {
-    pages: ['PRODUCT'],  // Only available on product pages
-  },
+  enabled: ({ page }) => page.type === 'PRODUCT',  // Only available on product pages
   settings: [
     { group: 'Layout', inputs: layoutInputs },
   ],
@@ -354,7 +357,7 @@ Pilot organizes theme settings into logical groups:
 
 ```tsx
 // app/weaverse/schema.server.ts
-export let themeSchema: HydrogenThemeSchema = {
+export let themeSchema: WeaverseThemeSchema = {
   info: {
     version: '7.0.0',
     author: 'Weaverse',
@@ -382,8 +385,8 @@ export let themeSchema: HydrogenThemeSchema = {
 3. **Namespace imports** — always `import * as X` in components.ts
 4. **Consistent group ordering** — Layout → Content → Style → Advanced
 5. **Child components** — use `childTypes` for composable sections, render `{children}`
-6. **forwardRef** — use for React 18 compatibility, optional in React 19
+6. **`ref` as a prop** — React 19; `forwardRef` is deprecated
 7. **TypeScript strict** — all components fully typed with interfaces
-8. **GraphQL fragments** — define in `app/graphql/` and reuse across loaders
+8. **GraphQL documents** — `gql()` in `app/graphql/`, fragments passed as `gql()`'s second argument, every query with an explicit `cache`
 9. **`shouldRevalidate: true`** — on inputs that change loader data (e.g., collection picker)
 10. **kebab-case types** — `hero-banner`, not `heroBanner` or `HeroBanner`

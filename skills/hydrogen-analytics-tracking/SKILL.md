@@ -22,7 +22,9 @@ You need this if you're:
 - Setting up tracking on a Hydrogen storefront with **Weaverse** as the CMS layer.
 - Investigating why **Oxygen full-page cache** is being disabled despite a correct `Oxygen-Cache-Control` header.
 
-If you just want page_view + Hydrogen's built-in `<Analytics.Provider>` cart events forwarded to GA4 via GTM, the Shopify docs are enough. Come here when you need the full funnel.
+If you just want page_view + Hydrogen's cart events (`<ShopifyScripts>` + `useCartAnalytics()`) forwarded to GA4 via GTM, Shopify's packaged `hydrogen-analytics` skill (`node_modules/@shopify/hydrogen/skills/hydrogen-analytics/`) is enough. Come here when you need the full funnel.
+
+> **Hydrogen 2026.10.** This skill targets Hydrogen 2026.10 and `@weaverse/hydrogen` 6, with Pilot `main` as the reference implementation. Classic analytics (`Analytics.Provider`, `<Analytics.*View>`, `useAnalytics()`, `getShopAnalytics`) and `CartForm` / `context.cart` are gone; see [`architecture.md`](./references/architecture.md#the-hydrogen-202610-analytics-bus) for what replaces them. To migrate a classic storefront first, use the `hydrogen-upgrades` skill.
 
 ---
 
@@ -76,8 +78,8 @@ If the server generates `event_id`, the browser already pushed its dataLayer eve
 
 A/B tests on a Weaverse storefront use [`@weaverse/experiments`](https://www.npmjs.com/package/@weaverse/experiments) — deterministic, project-level variant assignment. Exposure rides the **same** pipeline as every other event:
 
-- **Segment downstream events by variant.** Pass the resolved assignments to `<Analytics.Provider customData={{ experiments: { '<id>': '<variant>' } }}>`. `customData` is merged into every event, so `add_to_cart` / `purchase` are already tagged with the variant — this is what measures conversion *impact*, not just impressions. No need to re-attach the experiment per event.
-- **Fire an impression event.** Call `useAnalytics().publish('custom_experiment_viewed', { experimentId, variantId })` from the experiments `onExpose` callback, gated on `canTrack()`. Bridge `custom_experiment_viewed` → dataLayer/GA4 in your `<CustomAnalytics>` subscriber like any other custom event (`custom_` prefix required; call `ready()`).
+- **Segment downstream events by variant.** Pass the resolved assignments as bus config: `<ShopifyScripts analytics={{ channel, customData: { experiments: { '<id>': '<variant>' } } }} />`. The bus copies `customData` into its cart events (`cart_updated`, `product_added_to_cart`, `product_removed_from_cart`) but **not** into events you publish, so your destination reads it with `getConfig().customData` (from the `setup` context) and attaches it to every `dataLayer` push / `trackEvent()` payload. That tags `add_to_cart` / `purchase` with the variant — this is what measures conversion *impact*, not just impressions. Keep the assignments per market or per experiment bucket, never per shopper, or the document stops being cacheable.
+- **Fire an impression event.** The bus accepts only its own event names (it warns and drops anything else), so don't publish `custom_experiment_viewed` to it. From the experiments `onExpose` callback, gated on your consent check (`canTrack()`), push it straight to `dataLayer` or call `trackEvent({ event_name: 'experiment_viewed', custom_data: { experimentId, variantId } })`.
 - **Dedup.** Exposure is an impression, not a conversion, so the `event_id` dual-send is usually unnecessary. If you forward it to `/api/track`, reuse the storefront `trackEvent()` helper.
 
 Server-side `getExperiments()` wiring lives in the `weaverse-hydrogen` skill (Multi-Project Architecture → A/B Testing).
@@ -94,8 +96,8 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 | [`architecture.md`](./references/architecture.md) | Setting up the whole pipeline. Covers the dual-send pattern, dedup contract, vendor responsibilities, and how the pieces fit together. |
 | [`gtm-meta-implementation.md`](./references/gtm-meta-implementation.md) | Wiring up GTM dataLayer pushes, GA4 Event tags, Meta CAPI forwarder. Real code patterns. |
 | [`webhook-forwarding-via-builder.md`](./references/webhook-forwarding-via-builder.md) | **Weaverse-hosted storefronts:** how Shopify webhooks reach your storefront without leaking the multi-tenant app client secret. Uses the builder `WebhookForward` model + per-store signing secrets. |
-| [`cart-attribute-stash.md`](./references/cart-attribute-stash.md) | Bridging the **webhook cookie gap**: how to get `_fbp` / `_fbc` / `gclid` / affiliate click IDs from the browser into the Shopify orders webhook. Covers the two cart entry paths (POST action AND `/cart/<id>:<qty>` loader) that both need stash logic. |
-| [`oxygen-full-page-cache.md`](./references/oxygen-full-page-cache.md) | Configuring FPC, why `Set-Cookie` disables it, the `entry.server.tsx` strip trick. |
+| [`cart-attribute-stash.md`](./references/cart-attribute-stash.md) | Bridging the **webhook cookie gap**: how to get `_fbp` / `_fbc` / `gclid` / affiliate click IDs from the browser into the Shopify orders webhook. Covers the cart entry paths (`POST /api/cart` AND the `/cart/<id>:<qty>` permalink loader) that both need stash logic. |
+| [`oxygen-full-page-cache.md`](./references/oxygen-full-page-cache.md) | Configuring FPC, why `Set-Cookie` disables it, keeping documents anonymous on Hydrogen 2026.10. |
 | [`csp-for-tracking.md`](./references/csp-for-tracking.md) | CSP directives that allow Google/Meta/Hotjar; nonce vs strict-dynamic; GTM Custom HTML tags and inline-script violations. |
 | [`gotchas.md`](./references/gotchas.md) | The bugs that bite every implementation. Read this first if something isn't working. |
 
@@ -103,19 +105,19 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 
 ## Five things every Hydrogen tracking implementation gets wrong
 
-1. **Using Hydrogen's `PRODUCT_ADD_TO_CART` analytics event for `add_to_cart`.** Hydrogen diffs cart state after revalidation and emits the event then. The timing is unreliable — events often miss GA4 DebugView entirely. **Fix:** fire `add_to_cart` directly from the button onClick handler via `sendBeacon` (it survives the form submit / navigation).
+1. **Using the bus's `PRODUCT_ADD_TO_CART` event for `add_to_cart`.** `useCartAnalytics()` publishes it only after the cart store confirms the change with Shopify, so a navigation that follows the click (Buy now, checkout redirect) often drops it — events miss GA4 DebugView entirely. **Fix:** fire `add_to_cart` directly from the button onClick handler via `sendBeacon` (it survives the form submit / navigation).
 
-2. **Loading GTM after hydration via `<Script waitForHydration>`.** It hides GTM from Tag Assistant standalone scans and blocks the move to nonce-based `strict-dynamic` CSP. **Fix:** load `gtm.js` as a regular `<script async nonce={nonce}>` in `<head>`, with the inline `gtm.start` + Consent Mode v2 default-deny block before it.
+2. **Loading GTM after hydration without a nonce** (classic Hydrogen's `<Script waitForHydration>`, or any DOM-injected loader). It hides GTM from Tag Assistant standalone scans and blocks the move to nonce-based `strict-dynamic` CSP. **Fix:** load `gtm.js` as a regular `<script async nonce={nonce}>` in `<head>`, with the inline `gtm.start` + Consent Mode v2 default-deny block before it.
 
 3. **Pushing GA4-named events but configuring GTM triggers with legacy snake_case names** (or vice versa). After "Custom Event" renaming there's a coverage gap. **Fix:** match GTM trigger filters to whatever the storefront actually pushes today; do code + GTM in one coordinated change.
 
-4. **Letting `<Analytics.ProductView>` gate on `selectedVariant`.** For combined listings or any product where the variant resolves after hydration, the analytics component never mounts and `view_item` doesn't fire. **Fix:** mount unconditionally with safe per-variant fallbacks.
+4. **Letting the product view tracker gate on `selectedVariant`.** For combined listings or any product where the variant resolves after hydration, the tracker that publishes `PRODUCT_VIEWED` never mounts and `view_item` doesn't fire. **Fix:** mount unconditionally and fall back to `selectedOrFirstAvailableVariant`.
 
 5. **Treating "consent denied" as "send nothing".** Meta CAPI's relaxed pattern (LDU flag + ip/ua/fbp/fbc only, no hashed PII) recovers a large chunk of optimisation signal compliantly. GA4 Consent Mode v2 modeled conversions work the same way. **Fix:** in the server forwarder, when `ad_storage !== "granted"` drop hashed PII but still send the event with `data_processing_options: ["LDU"]`.
 
 6. **Pasting a Liquid `dataLayer.push` snippet into Hydrogen.** Merchants often bring an existing theme snippet using Liquid tags (`{{ product.id }}`, `{{ collection.title }}`, `{{ product.price | money_without_currency }}`). **These do nothing in Hydrogen** — it's React/SSR, there is no Liquid at runtime, so the braces render as literal text or break. **Fix:** rebuild the same object from Hydrogen data and push it in JS. Liquid → Hydrogen mapping: `{{ product.id }}` → `product.id`, `{{ product.title }}` → `product.title`, `{{ product.price | money_without_currency }}` → `product.priceRange?.minVariantPrice?.amount` (a string, no currency symbol), `{{ collection.id/title }}` → `collection.id/title`.
 
-7. **Expecting `select_item` / `view_item_list` from a built-in Hydrogen analytics event.** GA4 list events don't map to cart events. `select_item` is a **click** (user clicks a product card in a list) — fire it from the product card's `onClick` on the collection/PLP, where you already hold the product + collection + index. `view_item_list` is a **view** — push it from the `COLLECTION_VIEWED` subscriber in `app/components/root/custom-analytics.tsx`. Include `index` (list position) for GA4. Ensure the collection query returns `id`, `title`, `handle`, and `priceRange` so the values exist to push.
+7. **Expecting `select_item` / `view_item_list` from a built-in Hydrogen analytics event.** GA4 list events don't map to cart events. `select_item` is a **click** (user clicks a product card in a list) — fire it from the product card's `onClick` on the collection/PLP, where you already hold the product + collection + index. `view_item_list` is a **view** — push it from the `COLLECTION_VIEWED` subscription of your bus destination in `app/components/root/custom-analytics.tsx` (and make sure the collection route renders a tracker that publishes `COLLECTION_VIEWED`). Include `index` (list position) for GA4. Ensure the collection query returns `id`, `title`, `handle`, and `priceRange` so the values exist to push.
 
 ---
 
@@ -123,7 +125,7 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 
 If you're starting fresh on a new Hydrogen storefront:
 
-1. **Hydrogen `<Analytics.Provider>` wired at root.** Subscribe to its events in a `<CustomAnalytics />` component. (See [`architecture.md`](./references/architecture.md))
+1. **`<ShopifyScripts>` first in the root `<head>`**, route trackers publishing `PAGE_VIEWED` / `PRODUCT_VIEWED` / `COLLECTION_VIEWED` / `SEARCH_VIEWED` / `CART_VIEWED`, and `useCartAnalytics()` inside `CartProvider`. Map bus events to `dataLayer` in a `<CustomAnalytics />` component that registers a destination with `window.Shopify.analytics.addDestination()`. (See [`architecture.md`](./references/architecture.md))
 2. **Inline `<head>` Consent Mode v2 default-deny block + dataLayer + gtm.start marker.**
 3. **`gtm.js` external script with nonce, async, in `<head>` after the inline block.**
 4. **`trackEvent()` helper** that pushes dataLayer + `sendBeacon('/api/track')` with shared `event_id`.
@@ -132,7 +134,7 @@ If you're starting fresh on a new Hydrogen storefront:
 7. **Shopify "Google & YouTube" sales channel + Customer Events Pixel** for checkout-side events (Meta Pixel events, anything that needs to fire inside Shopify checkout where your GTM can't reach).
 8. **GTM container** with one GA4 Event tag per dataLayer event, plus Meta Pixel + TikTok + Google Ads conversion tags as needed.
 9. **CSP** updated to allow all vendor domains in `script-src`, `connect-src`, `img-src`. Use `strict-dynamic` + nonce.
-10. **Oxygen full-page cache** opted in per route via `Oxygen-Cache-Control: public, max-age=N, ...` header. Strip `Set-Cookie` from cacheable responses in `entry.server.tsx`.
+10. **Oxygen full-page cache** opted in for anonymous documents via `Oxygen-Cache-Control: public, max-age=N, ...` + `Vary` in `entry.server.tsx`. Keep cart and customer data out of loaders so the documents carry no `Set-Cookie`.
 
 ---
 
@@ -142,9 +144,10 @@ When working on a Hydrogen tracking implementation in this skill's scope:
 
 - **Server code lives under `app/.server/tracking/`** (forwarders, validators, hash util, audit log).
 - **Client helper at `app/utils/track-client.ts`** (exports `trackEvent`, consent listener, attribution capture).
-- **dataLayer bridge at `app/components/root/custom-analytics.tsx`** (subscribes to Hydrogen `<Analytics.Provider>` events).
+- **Route trackers at `app/components/root/analytics-views.tsx`** (publish view events to `window.Shopify.analytics`; `useCartAnalytics()` for cart events).
+- **dataLayer bridge at `app/components/root/custom-analytics.tsx`** (a bus destination registered with `addDestination()`, so delivery follows Customer Privacy consent).
 - **Inline Consent Mode + GTM bootstrap in `app/root.tsx` `<head>`**, with nonce.
-- **CSP config at `app/weaverse/csp.ts`** (Weaverse projects) or wherever your storefront sets CSP.
+- **CSP config at `app/weaverse/csp.ts`** (Weaverse projects), passed to the local `createContentSecurityPolicy()` port in `app/utils/csp.ts` from `entry.server.tsx` (Hydrogen 2026.10 no longer ships the helper).
 - **Per-vendor forwarder modules at `app/.server/tracking/forwarders/{ga4,meta-capi,google-ads}.ts`** — each returns `{forwarder, ok, skipped?, reason?}` so the audit log can show why an event was dropped.
 
 When a question is broader than a single vendor, prefer the reference doc that addresses the architectural layer rather than one vendor's docs.
@@ -173,7 +176,7 @@ For up-to-date official sources:
 # Shopify Hydrogen / Oxygen
 node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "oxygen full-page cache"
 node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "consent mode"
-node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "analytics provider"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "ShopifyScripts analytics"
 
 # Weaverse (if using Weaverse CMS)
 node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "csp"

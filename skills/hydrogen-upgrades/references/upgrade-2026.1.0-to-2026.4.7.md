@@ -2,7 +2,7 @@
 
 This upgrade spans **12 releases**: 2026.1.1 → 2026.1.2 → 2026.1.3 → 2026.1.4 → 2026.4.0 → 2026.4.1 → 2026.4.2 → 2026.4.3 → 2026.4.4 → 2026.4.5 → 2026.4.6 → 2026.4.7.
 
-`2026.4.7` (published 2026-10-02) is the current `latest` on npm. `2026.10.0-preview.4` is a preview tag and is **not** covered by this guide.
+`2026.4.7` (published 2026-10-02) is the last classic Hydrogen release, and the last one `@weaverse/hydrogen` 5.x supports. To continue to Hydrogen 2026.10 and `@weaverse/hydrogen` 6, follow [2026.4.7 → 2026.10.2](./upgrade-2026.4.7-to-2026.10.2.md) next.
 
 > Every change below is backed by the official
 > [`@shopify/hydrogen` changelog](https://github.com/Shopify/hydrogen/blob/main/packages/hydrogen/CHANGELOG.md)

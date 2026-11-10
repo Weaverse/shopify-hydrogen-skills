@@ -33,9 +33,9 @@ function HeroSection({ heading, ...rest }: HeroProps) {
 Theme-wide settings (colors, typography, spacing) are defined in `app/weaverse/schema.server.ts`:
 
 ```tsx
-import type { HydrogenThemeSchema } from '@weaverse/hydrogen';
+import type { WeaverseThemeSchema } from '@weaverse/hydrogen/react-router';
 
-export let themeSchema: HydrogenThemeSchema = {
+export let themeSchema: WeaverseThemeSchema = {
   info: {
     version: '1.0.0',
     author: 'Weaverse',
@@ -98,7 +98,7 @@ Convert theme settings to CSS custom properties:
 
 ```tsx
 // app/components/GlobalStyle.tsx
-import { useThemeSettings } from '@weaverse/hydrogen';
+import { useThemeSettings } from '@weaverse/hydrogen/react-router';
 
 export function GlobalStyle() {
   let settings = useThemeSettings();
@@ -159,7 +159,7 @@ Place `<GlobalStyle />` in your root layout (inside `root.tsx`).
 Access global theme settings in any component:
 
 ```tsx
-import { useThemeSettings } from '@weaverse/hydrogen';
+import { useThemeSettings } from '@weaverse/hydrogen/react-router';
 
 function Header() {
   let { colorPrimary, navHeightDesktop, logoUrl } = useThemeSettings();
@@ -193,26 +193,35 @@ let settings = useThemeSettings<MyThemeSettings>();
 
 ## `withWeaverse()` HOC
 
-Required in `root.tsx` to provide theme settings context:
+Required in `root.tsx` to provide theme settings context. Pilot wraps the root `Layout` export:
 
 ```tsx
 // app/root.tsx
-import { withWeaverse } from '@weaverse/hydrogen';
+import { withWeaverse } from '@weaverse/hydrogen/react-router';
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
+import { GlobalStyle } from '~/weaverse/style';
 
-function App() {
+export const Layout = withWeaverse(function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html>
-      <head><meta charSet="utf-8" /></head>
-      <body>
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <Meta />
+        <Links />
         <GlobalStyle />
-        <Outlet />
+      </head>
+      <body>
+        {children}
+        <ScrollRestoration />
+        <Scripts />
       </body>
     </html>
   );
-}
+});
 
-export default withWeaverse(App);
-export let ErrorBoundary = withWeaverse(ErrorBoundaryComponent);
+export default function App() {
+  return <Outlet />;
+}
 ```
 
 ---

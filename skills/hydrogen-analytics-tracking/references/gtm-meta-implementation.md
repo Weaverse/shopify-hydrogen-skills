@@ -4,7 +4,7 @@ Concrete code patterns. Adapted from production deployments.
 
 ## 1. GTM bootstrap in `<head>` (synchronous + nonced)
 
-`root.tsx`:
+`root.tsx` (`nonce` comes from `useNonce()` in `app/utils/csp.ts`, Pilot's port of the helper Hydrogen 2026.10 removed; render these after `<ShopifyScripts>`, which Pilot puts first in the head):
 
 ```tsx
 <head>
@@ -35,8 +35,9 @@ Concrete code patterns. Adapted from production deployments.
     }}
   />
 
-  {/* External gtm.js — async, NONCED. Do NOT use Hydrogen <Script waitForHydration>
-      here; it can't take a nonce and hides GTM from Tag Assistant scans. */}
+  {/* External gtm.js — async, NONCED. Don't inject it after hydration
+      without the nonce; that breaks strict-dynamic and hides GTM from Tag
+      Assistant scans. */}
   {googleGtmID ? (
     <script
       src={`https://www.googletagmanager.com/gtm.js?id=${googleGtmID}`}
@@ -68,90 +69,124 @@ If gtm.js loads before the `gtag('consent', 'default', …)` block runs, GTM bri
 
 The fix is strict ordering: inline `<script nonce>` block (synchronous, blocks parser briefly but is tiny) → external gtm.js (`async`, runs whenever it lands). Both nonced so CSP `strict-dynamic` trusts them.
 
-## 2. Hydrogen Analytics → dataLayer bridge
+## 2. Hydrogen analytics bus → dataLayer bridge
 
-`app/components/root/custom-analytics.tsx`:
+Hydrogen 2026.10 has no `useAnalytics().subscribe`. `<ShopifyScripts>` (rendered first in the root `<head>`) creates the bus at `window.Shopify.analytics`, route trackers publish to it (see [`architecture.md`](./architecture.md#the-hydrogen-202610-analytics-bus)), and every consumer registers as a **destination**. Destinations receive events (live and replayed) only once Shopify Customer Privacy allows analytics, so the bridge follows consent without extra code.
+
+`app/components/root/custom-analytics.tsx` (render it once in `app/root.tsx`, inside `<CartProvider>`):
 
 ```tsx
-import { AnalyticsEvent, useAnalytics } from "@shopify/hydrogen";
+import { AnalyticsEvent, type AnalyticsCartLine } from "@shopify/hydrogen";
 import { useEffect } from "react";
 import { trackEvent } from "~/utils/track-client";
 
+let destinationAdded = false;
+
+// Add once per page lifetime: re-adding a destination replays the bus's
+// buffered events and would double-count.
+function addTrackingDestination() {
+  const bus = window.Shopify?.analytics;
+  if (destinationAdded || !bus) return;
+  destinationAdded = true;
+
+  bus.addDestination({
+    name: "gtm",
+    // Only subscribe and map here: don't load scripts or set cookies in setup.
+    setup({ subscribe }) {
+      subscribe(AnalyticsEvent.PAGE_VIEWED, (data) => {
+        trackEvent({ event_name: "page_view", custom_data: { page_location: data.url } });
+      });
+
+      subscribe(AnalyticsEvent.PRODUCT_VIEWED, (data) => {
+        const product = data.products?.[0];
+        if (!product) return;
+        const item = {
+          item_id: product.id,
+          item_name: product.title,
+          item_brand: product.vendor,
+          item_variant: product.variantTitle,
+          price: product.price.amount, // the bus carries a MoneyV2
+          quantity: product.quantity || 1,
+        };
+        trackEvent({
+          event_name: "view_item",
+          custom_data: {
+            currency: product.price.currencyCode,
+            value: Number(item.price) * item.quantity,
+            items: [item],
+          },
+        });
+      });
+
+      subscribe(AnalyticsEvent.COLLECTION_VIEWED, (data) => {
+        trackEvent({
+          event_name: "view_item_list",
+          custom_data: {
+            item_list_id: data.collection.id,
+            item_list_name: data.collection.handle,
+          },
+        });
+      });
+
+      subscribe(AnalyticsEvent.CART_VIEWED, (data) => {
+        const lines = data.cart?.lines.nodes ?? [];
+        const items = lines.map(cartLineToGA4Item);
+        trackEvent({
+          event_name: "view_cart",
+          custom_data: {
+            currency: data.cart?.cost?.totalAmount?.currencyCode,
+            value: items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0),
+            items,
+          },
+        });
+      });
+
+      subscribe(AnalyticsEvent.PRODUCT_REMOVED_FROM_CART, (data) => {
+        if (!data.prevLine) return;
+        const item = cartLineToGA4Item(data.prevLine);
+        trackEvent({
+          event_name: "remove_from_cart",
+          custom_data: {
+            currency: data.prevLine.merchandise.price.currencyCode,
+            value: Number(item.price) * item.quantity,
+            items: [item],
+          },
+        });
+      });
+
+      // NOTE: don't map PRODUCT_ADD_TO_CART to add_to_cart here. Cart events
+      // come from useCartAnalytics() after the cart store confirms the change,
+      // which is too late for a navigation that follows the click. Fire
+      // add_to_cart from the button's onClick instead (see below).
+    },
+  });
+}
+
+function cartLineToGA4Item(line: AnalyticsCartLine) {
+  return {
+    item_id: line.merchandise.product.id,
+    item_name: line.merchandise.product.title,
+    item_brand: line.merchandise.product.vendor,
+    item_variant: line.merchandise.title,
+    price: line.merchandise.price.amount,
+    quantity: line.quantity,
+  };
+}
+
 export function CustomAnalytics() {
-  const { subscribe } = useAnalytics();
-
   useEffect(() => {
-    subscribe(AnalyticsEvent.PAGE_VIEWED, (data) => {
-      trackEvent({ event_name: "page_view", custom_data: { page_location: data.url } });
-    });
-
-    subscribe(AnalyticsEvent.PRODUCT_VIEWED, (data) => {
-      const product = data.products?.[0];
-      if (!product) return;
-      const item = {
-        item_id: product.id,
-        item_name: product.title,
-        item_brand: product.vendor,
-        item_variant: product.variantTitle,
-        price: product.price,
-        quantity: product.quantity || 1,
-      };
-      trackEvent({
-        event_name: "view_item",
-        custom_data: {
-          currency: data.shop?.currency,
-          value: Number(item.price) * item.quantity,
-          items: [item],
-        },
-      });
-    });
-
-    subscribe(AnalyticsEvent.COLLECTION_VIEWED, (data) => {
-      trackEvent({
-        event_name: "view_item_list",
-        custom_data: {
-          item_list_id: data.collection?.id,
-          item_list_name: data.collection?.handle,
-        },
-      });
-    });
-
-    subscribe(AnalyticsEvent.CART_VIEWED, (data) => {
-      const items = (data.cart?.lines?.nodes ?? []).map(cartLineToGA4Item);
-      trackEvent({
-        event_name: "view_cart",
-        custom_data: {
-          currency: data.cart?.cost?.totalAmount?.currencyCode,
-          value: Number(data.cart?.cost?.totalAmount?.amount ?? 0),
-          items,
-        },
-      });
-    });
-
-    subscribe(AnalyticsEvent.PRODUCT_REMOVED_FROM_CART, (data) => {
-      const item = cartLineToGA4Item(data.prevLine);
-      if (!item) return;
-      trackEvent({
-        event_name: "remove_from_cart",
-        custom_data: {
-          currency: data.cart?.cost?.totalAmount?.currencyCode,
-          value: Number(item.price) * (item.quantity || 1),
-          items: [item],
-        },
-      });
-    });
-
-    // NOTE: do NOT subscribe to PRODUCT_ADD_TO_CART here. Hydrogen diffs cart
-    // state after revalidation, which has unreliable timing — events often
-    // miss GA4 DebugView entirely. Fire add_to_cart directly from the button
-    // onClick handler (see below).
+    window.dataLayer = window.dataLayer || [];
+    addTrackingDestination();
   }, []);
-
   return null;
 }
 ```
 
-## 3. `add_to_cart` and `begin_checkout` — fire from the button, not Hydrogen events
+Pilot's own `custom-analytics.tsx` is the minimal version of this: a `gtm` destination that pushes `page_viewed`, `product_viewed`, `collection_viewed`, `cart_updated`, `add_to_cart`, `remove_from_cart` and `search_viewed` to `dataLayer`, plus a GTM loader that waits for user intent (or 8 s) and appends a nonced `gtm.js`.
+
+The bus only publishes events that something publishes. Make sure the routes render the trackers: `<PageView />` and `<CartAnalytics />` (which calls `useCartAnalytics()`) in the root, `<ProductView products={[...]} />` on the product route, `<CollectionView>`, `<SearchView>` and `<CartView>` where they apply (Pilot: `app/components/root/analytics-views.tsx`).
+
+## 3. `add_to_cart` and `begin_checkout` — fire from the button, not bus events
 
 `app/components/product/add-to-cart-button.tsx`:
 
@@ -186,18 +221,18 @@ return (
 );
 ```
 
-For `begin_checkout`: fire it on the checkout button's onClick, NOT from a Hydrogen subscriber. Same `trackEvent()` pattern.
+For `begin_checkout`: fire it on the checkout button's onClick, NOT from a bus destination. Same `trackEvent()` pattern.
 
 ### "Buy now" buttons that use Shopify cart permalinks
 
 ```tsx
-// Buy-now button uses /cart/{variantId}:{qty}?checkout — teleports to Shopify
-// checkout, bypassing Hydrogen's cart entirely. NEITHER add_to_cart NOR
-// begin_checkout will fire via Hydrogen's analytics.
+// Buy-now button uses the /cart/{variantId}:{qty} permalink — teleports to
+// Shopify checkout, bypassing the cart store entirely. NEITHER add_to_cart NOR
+// begin_checkout will reach the analytics bus.
 //
 // Fire BOTH manually in the onClick:
 <a
-  href={`/cart/${variantId}:${quantity}?checkout`}
+  href={`/cart/${variantId}:${quantity}`}
   onClick={() => {
     trackEvent({ event_name: "add_to_cart", custom_data: { currency, value, items } });
     trackEvent({ event_name: "begin_checkout", custom_data: { currency, value, items } });

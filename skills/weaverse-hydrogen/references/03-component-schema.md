@@ -9,7 +9,7 @@ The recommended way to define component schemas. Provides Zod validation at buil
 > **Production builds (since `@weaverse/hydrogen` 5.16.0 / `@weaverse/schema` 0.10.0):** the Zod runtime is isolated behind a dev-only boundary, so `createSchema()` is an identity pass-through in production and Zod tree-shakes out of the storefront bundle (~20KB gzip off client + SSR). Your schema code is unchanged — validation still runs in dev/build.
 
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
 
 export let schema = createSchema({
   type: string,            // Required: unique kebab-case identifier
@@ -28,7 +28,7 @@ export let schema = createSchema({
 
 Import from either package:
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';   // Recommended
+import { createSchema } from '@weaverse/hydrogen/react-router';   // Recommended
 import { createSchema } from '@weaverse/schema';      // Advanced
 ```
 
@@ -190,7 +190,7 @@ Existing `enabledOn` schemas remain supported. If both properties are present, b
 ## Complete Example
 
 ```tsx
-import { createSchema } from '@weaverse/hydrogen';
+import { createSchema } from '@weaverse/hydrogen/react-router';
 
 export let schema = createSchema({
   type: 'featured-collection',

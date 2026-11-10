@@ -1,109 +1,108 @@
 # Caching
 
-Source: https://github.com/Shopify/hydrogen/blob/main/packages/hydrogen/src/cache/strategies.ts
+Reference implementation: Pilot's `app/utils/cache.ts`, on `@shopify/hydrogen` 2026.10.
 
-## Cache Strategies
+## No Default Cache
 
-All strategies are imported from `@shopify/hydrogen` and passed as the `cache` option to `storefront.query()`.
+In Hydrogen 2026.10, `storefront.graphql()` has **no implicit cache**. A query without a `cache` option hits the Storefront API on every request. Pass a strategy on every call.
+
+`CacheShort`, `CacheLong`, `CacheNone`, `CacheCustom` and `generateCacheControlHeader` are gone. Strategies come from the `Cache` export:
 
 ```ts
-import {CacheNone, CacheShort, CacheLong, CacheCustom} from '@shopify/hydrogen'
+import { Cache, type CachingStrategy } from "@shopify/hydrogen";
+
+Cache({ mode: "public", maxAge: 60, staleWhileRevalidate: 3600 }) // custom
+Cache.short()
+Cache.long()
+Cache.none()
 ```
 
-### CacheNone
+> Classic Hydrogen (2026.4 and earlier) strategies are covered in the `hydrogen-upgrades` skill.
 
-Returns `{mode: 'no-store'}`. Use for user-specific or real-time data — cart, account, live inventory.
+## Shared Constants
+
+Define the strategies once and import them everywhere. Pilot maps the classic behavior:
 
 ```ts
-storefront.query(CART_QUERY, {cache: CacheNone()})
+// app/utils/cache.ts
+import { Cache, type CachingStrategy } from "@shopify/hydrogen";
+
+// Classic Hydrogen's implicit default: fresh for a second, stale for a day
+export const CACHE_DEFAULT = Cache({
+  mode: "public",
+  maxAge: 1,
+  staleWhileRevalidate: 86_399,
+});
+export const CACHE_SHORT = Cache.short();
+export const CACHE_LONG = Cache.long();
+export const CACHE_NONE = Cache.none();
 ```
 
-### CacheShort
-
 ```ts
-// Defaults:
-{mode: 'public', maxAge: 1, staleWhileRevalidate: 9}
+const { shop } = await storefront
+  .graphql(SHOP_QUERY, { cache: CACHE_LONG })
+  .then(unwrapStorefront);
 ```
 
-Use for frequently updated data — product prices, availability.
+Section loaders in a Weaverse theme do the same through `weaverse.storefront.graphql(doc, { variables, cache })`.
+
+## CachingStrategy Fields
+
+| Field | Meaning |
+|-------|---------|
+| `mode` | `"public"`, `"private"` or `"no-store"` |
+| `maxAge` | `max-age` in seconds |
+| `staleWhileRevalidate` | `stale-while-revalidate` in seconds |
+| `sMaxAge` | `s-maxage` in seconds (shared caches only) |
+| `staleIfError` | `stale-if-error` in seconds |
+
+## `Cache-Control` Headers
+
+`generateCacheControlHeader` no longer exists. Pilot builds header values from a strategy with a local helper:
 
 ```ts
-storefront.query(PRODUCT_QUERY, {cache: CacheShort()})
-// Override defaults:
-storefront.query(PRODUCT_QUERY, {cache: CacheShort({maxAge: 5})})
-```
+const CACHE_CONTROL_DIRECTIVES = {
+  maxAge: "max-age",
+  staleWhileRevalidate: "stale-while-revalidate",
+  sMaxAge: "s-maxage",
+  staleIfError: "stale-if-error",
+} as const;
 
-### CacheLong
-
-```ts
-// Defaults:
-{mode: 'public', maxAge: 3600, staleWhileRevalidate: 82800}
-// = 1 hour maxAge, 23 hours staleWhileRevalidate
-```
-
-Use for stable, rarely-changing data — navigation menus, shop settings, collection structure.
-
-```ts
-storefront.query(SHOP_QUERY, {cache: CacheLong()})
-```
-
-### CacheCustom
-
-Pass your own options directly. Full control.
-
-```ts
-storefront.query(QUERY, {
-  cache: CacheCustom({
-    mode: 'public',
-    maxAge: 60 * 30,              // 30 minutes
-    staleWhileRevalidate: 60 * 60 * 23,
-    sMaxAge: 60 * 60,             // shared cache max-age
-    staleIfError: 60 * 60 * 24,  // serve stale on error for 24hrs
-  }),
-})
-```
-
-## AllCacheOptions Type
-
-```ts
-interface AllCacheOptions {
-  /** 'public', 'private', or 'no-store' */
-  mode?: string
-  /** max-age in seconds */
-  maxAge?: number
-  /** stale-while-revalidate in seconds */
-  staleWhileRevalidate?: number
-  /** s-maxage in seconds (shared caches only) */
-  sMaxAge?: number
-  /** stale-if-error in seconds */
-  staleIfError?: number
+export function cacheControlHeader(strategy: CachingStrategy): string {
+  const directives: string[] = [];
+  for (const [key, value] of Object.entries(strategy)) {
+    if (key === "mode") {
+      directives.push(String(value));
+    } else if (key in CACHE_CONTROL_DIRECTIVES && value !== undefined) {
+      directives.push(
+        `${CACHE_CONTROL_DIRECTIVES[key as keyof typeof CACHE_CONTROL_DIRECTIVES]}=${value}`,
+      );
+    }
+  }
+  return directives.join(", ");
 }
+
+// cacheControlHeader(CACHE_SHORT) → "public, max-age=1, stale-while-revalidate=9"
 ```
 
-> **Note:** When using `CacheShort` or `CacheLong` with overrides, `mode` must be `'public'` or `'private'`. Any other value throws: `"'mode' must be either 'public' or 'private'"`.
-
-## generateCacheControlHeader
-
-Converts a `CachingStrategy` object into a `Cache-Control` header string:
-
-```ts
-import {generateCacheControlHeader} from '@shopify/hydrogen'
-
-generateCacheControlHeader({mode: 'public', maxAge: 60, staleWhileRevalidate: 3600})
-// → 'public, max-age=60, stale-while-revalidate=3600'
-
-generateCacheControlHeader({mode: 'no-store'})
-// → 'no-store'
-```
+Route `headers` exports then forward the loader's `Cache-Control` (Pilot's `routeHeaders` in `app/utils/cache.ts`, falling back to `CACHE_SHORT`).
 
 ## What to Cache
 
 | Data | Strategy | Reasoning |
 |------|----------|-----------|
-| Shop info, menus, policies | `CacheLong()` | Rarely changes |
-| Collections, blogs | `CacheLong()` | Rarely changes |
-| Product pages | `CacheShort()` | Price/availability can change |
-| Search results | `CacheShort()` | Dynamic but acceptable lag |
-| Cart | `CacheNone()` | Always user-specific |
-| Account / orders | `CacheNone()` | Always user-specific |
-| Predictive search | `CacheNone()` | Real-time |
+| Shop info, menus, policies | `CACHE_LONG` | Rarely changes |
+| Collections, blogs | `CACHE_LONG` or `CACHE_DEFAULT` | Rarely changes |
+| Product pages | `CACHE_DEFAULT` / `CACHE_SHORT` | Price/availability can change |
+| Search results | `CACHE_SHORT` | Dynamic but acceptable lag |
+| Cart | Hydrogen's `/api/cart` handlers | Never in a route loader |
+| Account / orders | `context.customerAccount.graphql()` | Always user-specific |
+
+## Keep Documents Anonymous
+
+Oxygen's full-page cache only stores responses without personalization. In Hydrogen 2026.10 that means:
+
+- Don't load the cart in the root loader: render `CartProvider` without `initialData` and let it fetch `/api/cart` after hydration.
+- Commit the session only when it changed (no `Set-Cookie` on anonymous pages).
+- Keep the `ShopifyScripts` props per market, never per shopper.
+- Fetch customer tokens from a private, `no-store` endpoint after hydration (Pilot: `GET /api/account/token`).
