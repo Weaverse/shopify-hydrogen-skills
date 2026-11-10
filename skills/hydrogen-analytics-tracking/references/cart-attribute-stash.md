@@ -61,6 +61,42 @@ import { cartQueries, createShopifyRouteHandler, type ShopifyRouteHandlerContext
 import { buildAttributionCartAttrsFromCookies } from "~/utils/attribution";
 
 type Attribute = { key: string; value: string | null };
+type StashCart = { id?: string; attributes?: Attribute[] } | null | undefined;
+
+const CART_GID_PREFIX = "gid://shopify/Cart/";
+
+/** The `cart` cookie holds the cart token without the GID prefix. */
+function readCartCookie(cookieHeader: string | null) {
+  const token = cookieHeader?.match(/(?:^|;\s*)cart=([^;]*)/)?.[1];
+  if (!token) return null;
+  const id = decodeURIComponent(token);
+  return id.startsWith(CART_GID_PREFIX) ? id : CART_GID_PREFIX + id;
+}
+
+/**
+ * The cart the mutation produced. JSON requests (the hydrated cart store) get
+ * it in the result. Form posts (submitted before hydration or without JS) get
+ * a redirect instead, so read the cart ID from the new `cart` cookie the
+ * handler set (first add) or from the request's cookie, and query it.
+ */
+async function resolveMutatedCart(
+  result: Awaited<ReturnType<typeof cartHandlers.post>>,
+  context: Omit<ShopifyRouteHandlerContext, "sessionManager">,
+): Promise<StashCart> {
+  if (result.type === "json") {
+    return (result.data as { cart?: StashCart }).cart;
+  }
+  if (result.type !== "redirect") return null; // an error: nothing to stash
+  const setCookies = new Headers(result.headers).getSetCookie();
+  const cartId =
+    readCartCookie(setCookies.find((c) => c.startsWith("cart=")) ?? null) ??
+    readCartCookie(context.request.headers.get("Cookie"));
+  if (!cartId) return null;
+  const { data } = await context.storefrontClient.graphql(cartQueries.cart, {
+    variables: { id: cartId },
+  });
+  return data?.cart;
+}
 
 export const attributionCartHandler = {
   post: createShopifyRouteHandler(
@@ -72,14 +108,13 @@ export const attributionCartHandler = {
       // After ANY successful cart mutation, merge attribution identifiers
       // into the cart's attributes. Idempotent — skips when the cart already
       // carries them.
-      const cart =
-        result.type === "json"
-          ? (result.data as { cart?: { id?: string; attributes?: Attribute[] } }).cart
-          : undefined;
       const desired = buildAttributionCartAttrsFromCookies(
         context.request.headers.get("Cookie"),
       );
-      if (cart?.id && desired.length > 0) {
+      if (desired.length === 0) return result;
+      // Best-effort — never fail the cart mutation if this hiccups.
+      const cart = await resolveMutatedCart(result, context).catch(() => null);
+      if (cart?.id) {
         const existing = cart.attributes ?? [];
         const missing = desired.filter(
           (d) => !existing.some((e) => e.key === d.key && e.value === d.value),
@@ -92,7 +127,6 @@ export const attributionCartHandler = {
               .map((e) => ({ key: e.key, value: e.value ?? "" })),
             ...desired,
           ];
-          // Best-effort — never fail the cart mutation if this hiccups.
           await context.storefrontClient
             .graphql(cartQueries.cartAttributesUpdate, {
               variables: { cartId: cart.id, attributes },
@@ -105,6 +139,8 @@ export const attributionCartHandler = {
   ),
 };
 ```
+
+`cartHandlers.post` answers a JSON request with `{ type: "json", data }` and any other request (a cart `<form>` posted before hydration or without JavaScript) with `{ type: "redirect", location, headers }`. A redirect can also mean the request was rejected before any mutation; the merge below is idempotent, so stashing on the existing cart is still safe. Handle both: a stash that only reads `result.data` silently skips every no-JS add even though the mutation succeeded and the attribution cookies exist. On a first add, the redirect's `headers` carry the new `cart` cookie; otherwise the cart ID is in the request's cookie. Hydrogen keeps its own cookie reader internal, so the sample parses the cookie itself (`cart=<token>`, token without the `gid://shopify/Cart/` prefix).
 
 Register it in `server.ts` ahead of `cartHandlers` in the `handlers` array. If you already have an app-owned `POST /api/cart` (Pilot's syncs the cart's market and customer first), fold the stash into that handler instead of adding a second one: only the first matching handler runs.
 

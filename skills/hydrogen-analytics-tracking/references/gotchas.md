@@ -293,25 +293,28 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 
 Permalinks with `payment` (Shop Pay) stay with Hydrogen's handler and get no app-side stash. Audit your own handlers and routes for any other cart-mutating code path (e.g. an upsell endpoint, share-cart feature) and apply the same pattern there.
 
-## "3rd-party affiliate tracker's loader.js is POSTing to /cart/update.js and getting 405"
+## "3rd-party affiliate tracker's loader.js POSTs to /cart/update.js and it fails"
 
-**Symptom:** Browser console shows `POST https://yoursite.com/cart/update.js 405` from a script like `api.goaffpro.com/loader.js`. The request body looks like `attributes[__ref]=AFFILIATE_CODE&attributes[__sub_id]=...`.
+**Symptom:** Browser console shows a failed `POST https://yoursite.com/cart/update.js` (often a 4xx) from a script like `api.goaffpro.com/loader.js`. The request body looks like `attributes[__ref]=AFFILIATE_CODE&attributes[__sub_id]=...`.
 
-**Cause:** Affiliate trackers (GoAffpro, Refersion, etc.) were designed for **Shopify Liquid themes**, which expose AJAX cart endpoints like `/cart/update.js`, `/cart/add.js`, `/cart.js`. A Hydrogen 2026.10 storefront serves its cart from `/api/cart` instead, so these Liquid endpoints don't exist there. Their loader's auto-stash of attribution into cart attributes silently fails.
+**What actually handles it:** Affiliate trackers (GoAffpro, Refersion, etc.) were designed for **Shopify Liquid themes** and call the AJAX cart API (`/cart.js`, `/cart/add.js`, `/cart/update.js`, `/cart/change.js`, `/cart/clear.js`). On Hydrogen 2026.10 these paths **are** served: `handleShopifyRoutes()` runs an AJAX API interceptor (last in its list, after your registered handlers) that matches them, with or without a market prefix (`/fr-ca/cart/update.js`), rewrites `.js` to `.json`, and proxies the request to the shop's own domain (`storefrontClient.storeUrl`) with an allowlist of request headers plus the storefront request headers. React Router never sees the request, so a resource route at `cart/update.js` is unreachable — don't add one.
 
-**Fix:** Two complementary approaches:
+The status the browser sees is therefore **Shopify's upstream response**, passed through, apart from these cases Hydrogen answers itself:
 
-1. **Don't rely on their tracker for cart attributes.** Implement the server-side cart-attribute stash yourself (see [`cart-attribute-stash.md`](./cart-attribute-stash.md)). Capture the same identifiers their loader captures (typically `?ref=` / `?aff=` / `?gfp_ref=` URL params) into your own attribution cookie, then stash from that cookie into cart attrs on the server. Their `/cart/update.js` 405 becomes harmless noise.
+| Response | Meaning |
+|----------|---------|
+| `400 { "error": "JSONP requests are not supported" }` | The script added `?callback=` |
+| `500` / `502` with `{ "error": "..." }`, `cache-control: no-store` | Proxy setup failed / upstream fetch failed or timed out (30 s) |
+| Anything else | Shopify's own `/cart/update.json` answer |
 
-2. **Optionally silence the 405** by adding a resource route that 204s the request (register it in `app/routes.ts`, e.g. `route("cart/update.js", "routes/cart/update-js.ts")`):
+**Diagnose:**
 
-   ```ts
-   // app/routes/cart/update-js.ts
-   export async function action() { return new Response(null, { status: 204 }); }
-   export async function loader() { return new Response(null, { status: 204 }); }
-   ```
+1. In DevTools → Network, open the failing request and read the response body and status. A JSON `{ "error": ... }` with `cache-control: no-store` is from Hydrogen's proxy (table above); anything else came from Shopify.
+2. Reproduce the upstream call directly against the shop domain to separate proxy problems from Shopify's answer, e.g. `curl -i -X POST "https://<shop-domain>/cart/update.json" -d 'attributes[__ref]=TEST'`.
+3. Check the worker logs: proxy failures are logged as `request failed` under the `ajax-api` scope.
+4. Remember the AJAX API acts on the cart its own cookies identify. Confirm in the cart store (`useCart((state) => state.data?.attributes)`) or the order's `note_attributes` whether the attributes landed on the cart your checkout uses, rather than assuming they did because the request returned 200.
 
-   Don't actually parse + apply the body — your own stash already handles the same data via the cookie route, with merge logic that doesn't clobber other apps' attributes.
+**Fix:** Don't rely on the tracker's AJAX call for attribution. Implement the server-side cart-attribute stash yourself (see [`cart-attribute-stash.md`](./cart-attribute-stash.md)): capture the same identifiers their loader captures (typically `?ref=` / `?aff=` / `?gfp_ref=` URL params) into your own first-party attribution cookie, then merge them into the cart attributes on every cart mutation path. Whatever the proxied `/cart/update.js` returns then stops mattering for attribution.
 
 **For GoAffpro specifically:** their thank-you-page callback `/order_complete` is fired from `checkoutPageCallback()` in `loader.js`, which only runs on the Shopify thank-you page — a different subdomain (`checkout.<site>`) where the storefront's GTM doesn't run. Hydrogen storefronts must wire `/order_complete` themselves from the orders webhook. The `_segai_goaffpro_ref` cart attribute pattern + a server-side forwarder is the canonical path; the docs page is at <https://docs.goaffpro.com/how-tos/manual-integration/custom-shopify-integration>.
 
