@@ -46,7 +46,8 @@ Prefer behavior-level tests against public helpers or real route boundaries.
 ### Context and rendering
 
 - [ ] The real request context sends Shopify its verified provider language and country.
-- [ ] The real Weaverse client sends the public language-country locale used for content and Translation Manager lookup.
+- [ ] The real Weaverse client sends the public language-country locale used for content and Translation Manager lookup (on `@weaverse/hydrogen` 6.1+, the `WeaverseClient` `locale` option; otherwise it reads `storefront.i18n`).
+- [ ] Unprefixed Hydrogen handler requests (`/api/cart`, `/api/predictive-search`, `/account/login|logout|refresh`) resolve the market from the same-origin `Referer` (and `return_to` for login), not the default market.
 - [ ] Provider-language overrides do not change the public path, hreflang, bundle, or Weaverse locale.
 - [ ] SSR and hydration render the same `<html lang>` and `dir` for LTR and RTL markets.
 - [ ] Market switching cannot leave stale layout or translation state.
@@ -64,10 +65,12 @@ Prefer behavior-level tests against public helpers or real route boundaries.
 - [ ] Cart creation includes the active country in buyer identity.
 - [ ] Every cart mutation path synchronizes buyer identity before checkout.
 - [ ] The country selector preserves the neutral path and query while changing prefixes.
-- [ ] Cart fetchers and API routes use localized URLs.
+- [ ] App-owned cart routes use localized URLs; Hydrogen's handler paths (`/api/cart`, `/api/cart/*`) stay unprefixed and carry the market through the `Referer`.
+- [ ] Cart permalinks (`/cart/<variant>:<qty>`, with and without a market prefix) create the cart in the expected market.
 - [ ] Safe app-relative redirect targets beginning with exactly one `/` survive; schemes, protocol-relative forms, backslashes, control characters, and parse failures fall back to the localized cart while required cart/session cookies still commit.
 - [ ] Login and unauthorized-account redirects preserve the market and return target.
-- [ ] Logout passes the localized home as `postLogoutRedirectUri`.
+- [ ] Logout passes the localized home as `postLogoutRedirectUri` (on 2026.10, via `/account/logout?return_to=<localized home>`).
+- [ ] After a client-side market switch, `window.Shopify` (country, currency, locale, `routes.root`) matches the new market, and `<ShopifyScripts>` `i18n` matches the server-rendered market.
 - [ ] Checkout uses the cart after buyer-identity synchronization and returns localized on failure.
 
 ### SEO and translations
@@ -86,9 +89,9 @@ Prefer behavior-level tests against public helpers or real route boundaries.
 
 A pure helper test does not prove shipped code calls the helper. Add the smallest tests that drive real boundaries:
 
-- [ ] Construct the real Hydrogen/Weaverse request context and record outbound locale requests.
+- [ ] Construct the real request context (`createAppContext()` or equivalent: Storefront client + `WeaverseClient`) and record outbound locale requests.
 - [ ] Drive the real root loader and assert localized theme payload plus merchant-override provenance.
-- [ ] Drive the real cart action with safe and hostile redirect targets.
+- [ ] Drive the real cart handlers (`POST /api/cart`, the buyer-identity endpoint) with safe and hostile redirect targets.
 - [ ] Render representative shipped components inside the real translation provider, including a live cleared value.
 - [ ] Drive the real logout function and inspect the option passed to Customer Account logout for every configured prefix.
 
