@@ -29,8 +29,13 @@ offline guidance; the live-doc commands are optional enrichment.
 # Always fetch latest docs before making decisions
 node ../shopify-hydrogen/scripts/search_weaverse_docs.mjs "existing hydrogen integration"
 node ../shopify-hydrogen/scripts/get_weaverse_page.mjs "migration-advanced/existing-hydrogen-integration"
-node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "createHydrogenContext"
+node ../shopify-hydrogen/scripts/search_shopify_docs.mjs "handleShopifyRoutes"
+node ../shopify-hydrogen/scripts/get_weaverse_page.mjs "migration-advanced/v6-migration"
 ```
+
+This skill targets **Hydrogen 2026.10** and **`@weaverse/hydrogen` 6**. The
+reference implementation is [Pilot](https://github.com/Weaverse/pilot) `main`
+(`v2026.11.7` and later); when in doubt, read the matching Pilot file.
 
 ---
 
@@ -47,13 +52,15 @@ cat package.json | grep -E '"react-router"|"@remix-run"|"@shopify/hydrogen"|"@we
 
 | What you find | Weaverse version to install |
 |---|---|
-| `react-router` + `@shopify/hydrogen@2025.5.0+` | `@weaverse/hydrogen@latest` (v5, React Router v7) |
-| `@remix-run/react` | `@weaverse/hydrogen@4` (v4, Remix) |
+| `@shopify/hydrogen@2026.10+` (library: `server.ts` calls `handleShopifyRoutes`) | `@weaverse/hydrogen@latest` (v6) — **this skill** |
+| `@shopify/hydrogen` 2025.5 – 2026.4 (classic: `createHydrogenContext`, React Router 7) | Upgrade to 2026.10 first (recommended), or `@weaverse/hydrogen@5` |
+| `@remix-run/react` | Migrate to React Router 7 and Hydrogen 2026.10 first, or `@weaverse/hydrogen@4` |
 
-**If the project uses Remix (pre-2025.5.0):**
-- Ask the user if they want to migrate to React Router v7 first, then integrate Weaverse v5
-- Or integrate Weaverse v4 on their current Remix setup
-- Recommend the v7 migration path — it's the future
+`@weaverse/hydrogen` 6 has a peer dependency on `@shopify/hydrogen >=2026.10.0`. It does not run on classic Hydrogen.
+
+**If the project is on classic Hydrogen (2026.4 or earlier):**
+- Recommend upgrading to Hydrogen 2026.10 first: [`upgrade-2026.4.7-to-2026.10.2.md`](../hydrogen-upgrades/references/upgrade-2026.4.7-to-2026.10.2.md) and Shopify's packaged migration skill (`node_modules/@shopify/hydrogen/skills/migrate-to-hydrogen-2026-10/`, available once `@shopify/hydrogen@2026.10` is installed). Then integrate Weaverse 6 with this skill.
+- If the user must stay on classic Hydrogen, install `@weaverse/hydrogen@5`. **v5 only:** imports come from the root `@weaverse/hydrogen` entry, types use the `Hydrogen*` names (`HydrogenComponent`, `HydrogenComponentProps`, ...), and `WeaverseClient` is created from the spread classic context (`new WeaverseClient({ ...hydrogenContext, request, cache, themeSchema, components })`). Everything else below does not apply as written.
 
 ### 1.2 Catalog the Codebase
 
@@ -64,7 +71,9 @@ Read these files and note their patterns:
 | `package.json` | Dependencies, scripts, package manager (npm/yarn/pnpm/bun) |
 | `app/root.tsx` | Layout structure, providers, global styles |
 | `app/entry.server.tsx` | CSP setup, rendering approach |
-| `server.ts` (or `server/index.ts`) | Context creation, middleware |
+| `server.ts` | Request lifecycle: `handleShopifyRoutes`, React Router handler, session commit, `handleShopifyRedirects` |
+| `app/.server/context.ts` (or wherever the request context is built) | Storefront client, session, customer account; where `WeaverseClient` goes |
+| `env.d.ts` | `Env` type and the `AppLoadContext` / `RouterContextProvider` augmentation |
 | `app/routes/**` | Route structure, loader patterns, naming convention |
 | `app/components/**` | Component patterns, props, styling approach |
 | `app/sections/**` | If sections exist — how they're structured |
@@ -118,12 +127,13 @@ Find components that are good candidates for Weaverse sections:
 
 ```bash
 # Use whatever package manager the project already uses
-# React Router v7 (Hydrogen 2025.5.0+)
+# Hydrogen 2026.10+
 npm install @weaverse/hydrogen@latest
-
-# Remix (legacy)
-npm install @weaverse/hydrogen@4
 ```
+
+`@weaverse/hydrogen` 6 pins exact versions of `@weaverse/react` and `@weaverse/next`. Don't add either to `package.json`; if one is already there, align it to the version `@weaverse/hydrogen` depends on (`npm view @weaverse/hydrogen dependencies`), or two copies of `@weaverse/react` break the React context.
+
+Import everything from `@weaverse/hydrogen/react-router`. Never import from `@weaverse/hydrogen/internal` (Studio and CLI only).
 
 ### 2.2 Environment Variables
 
@@ -134,13 +144,18 @@ WEAVERSE_PROJECT_ID="provided-by-user"
 WEAVERSE_API_KEY="provided-by-user"
 ```
 
-**Also add to `.env.example`** (without real values) and update TypeScript env types:
+**Also add to `.env.example`** (without real values) and update TypeScript env types. Extend the SDK's `WeaverseEnv` (it declares the optional `WEAVERSE_*` variables and the public store values Studio reads):
 
 ```ts
-// Add to the Env type in env.d.ts or wherever the project defines it
-WEAVERSE_PROJECT_ID: string;
-WEAVERSE_API_KEY: string;
-WEAVERSE_HOST?: string;
+// env.d.ts
+import type { WeaverseEnv } from "@weaverse/hydrogen/react-router";
+
+declare global {
+  interface Env extends WeaverseEnv {
+    // ... the project's existing variables
+    WEAVERSE_PROJECT_ID: string;
+  }
+}
 ```
 
 ### 2.3 Create `app/weaverse/` Directory
@@ -150,10 +165,10 @@ Create these 5 files. **Match the project's existing code style** (exports, nami
 #### `app/weaverse/schema.server.ts` — Theme Schema
 
 ```ts
-import type { HydrogenThemeSchema } from "@weaverse/hydrogen";
+import type { WeaverseThemeSchema } from "@weaverse/hydrogen/react-router";
 import pkg from "../../package.json";
 
-export let themeSchema: HydrogenThemeSchema = {
+export let themeSchema: WeaverseThemeSchema = {
   info: {
     version: pkg.version,
     author: "Your Store Name",
@@ -212,7 +227,7 @@ export let themeSchema: HydrogenThemeSchema = {
 Read the project's existing global styles (CSS files, Tailwind config, root layout) and create CSS variables that integrate with their existing setup.
 
 ```tsx
-import { useThemeSettings } from "@weaverse/hydrogen";
+import { useThemeSettings } from "@weaverse/hydrogen/react-router";
 
 export function GlobalStyle() {
   let settings = useThemeSettings();
@@ -242,11 +257,11 @@ export function GlobalStyle() {
 #### `app/weaverse/components.ts` — Component Registry
 
 ```ts
-import type { HydrogenComponent } from "@weaverse/hydrogen";
+import type { WeaverseComponent } from "@weaverse/hydrogen/react-router";
 
 // Import converted sections here — start empty, add as you convert
 // MUST use namespace imports: import * as X, NOT import X from
-export let components: HydrogenComponent[] = [
+export let components: WeaverseComponent[] = [
   // Sections will be added during Phase 3
 ];
 ```
@@ -254,7 +269,8 @@ export let components: HydrogenComponent[] = [
 #### `app/weaverse/index.tsx` — WeaverseContent
 
 ```tsx
-import { WeaverseHydrogenRoot } from "@weaverse/hydrogen";
+import { WeaverseHydrogenRoot } from "@weaverse/hydrogen/react-router";
+import { GenericError } from "~/components/generic-error"; // the project's error component
 import { components } from "./components";
 
 export function WeaverseContent() {
@@ -271,31 +287,34 @@ Use the project's existing error component if they have one, otherwise create a 
 
 #### `app/weaverse/csp.ts` — Content Security Policy
 
-```ts
-export function getWeaverseCsp(request: Request, context: any) {
-  let url = new URL(request.url);
-  let weaverseHost = context.env?.WEAVERSE_HOST || "https://weaverse.io";
-  let isDesignMode = url.searchParams.get("weaverse_design_mode") === "true";
+Trimmed from Pilot's `app/weaverse/csp.ts`; add the project's own third-party origins.
 
-  let weaverseHosts = [
-    new URL(weaverseHost).host,
-    "weaverse.io",
-    "*.weaverse.io",
-    "shopify.com",
-    "*.shopify.com",
-    "*.myshopify.com",
-  ];
+```ts
+export function getWeaverseCsp(
+  request: Request,
+  env: { WEAVERSE_HOST?: string },
+) {
+  let url = new URL(request.url);
+  // Studio loads the preview with `?weaverseHost=...`
+  let weaverseHost = url.searchParams.get("weaverseHost") || env.WEAVERSE_HOST;
+  let isDesignMode = url.searchParams.get("weaverseHost");
+  let weaverseHosts = ["*.weaverse.io", "*.shopify.com", "*.myshopify.com"];
+  if (weaverseHost) {
+    weaverseHosts.push(weaverseHost);
+  }
 
   let updatedCsp: Record<string, string[] | string | boolean> = {
-    frameAncestors: weaverseHosts,
-    defaultSrc: ["'self'", "data:", ...weaverseHosts],
-    scriptSrc: ["'self'", "'unsafe-inline'", ...weaverseHosts],
-    styleSrc: ["'self'", "'unsafe-inline'", ...weaverseHosts],
-    connectSrc: ["'self'", ...weaverseHosts],
+    defaultSrc: ["data:", ...weaverseHosts],
+    connectSrc: [...weaverseHosts],
+    styleSrc: [...weaverseHosts],
+    // `scriptSrc` replaces `defaultSrc` for scripts, so list every script origin
+    scriptSrc: ["'self'", "https://cdn.shopify.com", ...weaverseHosts],
   };
 
   if (isDesignMode) {
     updatedCsp.frameAncestors = ["*"];
+    // The Studio bridge rebuilds schema `condition` functions from strings
+    (updatedCsp.scriptSrc as string[]).push("'unsafe-eval'");
   }
 
   return updatedCsp;
@@ -304,65 +323,93 @@ export function getWeaverseCsp(request: Request, context: any) {
 
 ### 2.4 Update Server Context
 
-Modify the existing context file (usually `server.ts` or `app/lib/context.ts`):
+Hydrogen 2026.10 has no `createHydrogenContext()`. The project builds its own request context (Pilot: `createAppContext()` in `app/.server/context.ts`) and `server.ts` copies it onto React Router's context. Create the `WeaverseClient` there, from the **request-scoped Storefront client** the project already builds:
 
 ```ts
-// ADD these imports
-import { WeaverseClient } from "@weaverse/hydrogen";
-import { themeSchema } from "~/weaverse/schema.server"; // adjust path alias
+// app/.server/context.ts (or the project's equivalent)
+import { WeaverseClient } from "@weaverse/hydrogen/react-router";
 import { components } from "~/weaverse/components";
+import { themeSchema } from "~/weaverse/schema.server";
 
-// INSIDE createAppLoadContext, after hydrogenContext is created:
-return {
-  ...hydrogenContext,
-  weaverse: new WeaverseClient({
-    ...hydrogenContext,
-    request,
+export async function createAppContext(
+  request: Request,
+  env: Env,
+  executionContext: ExecutionContext,
+) {
+  const waitUntil = executionContext.waitUntil.bind(executionContext);
+  // ... the project's existing cache, session, storefront and customerAccount
+
+  // ADD
+  const weaverse = new WeaverseClient({
+    storefront, // the request-scoped 2026.10 Storefront client
+    env,
     cache,
+    waitUntil,
+    request,
+    customerAccount, // optional; passed through to section loaders
     themeSchema,
     components,
-  }),
-};
+  });
+
+  return { env, cache, waitUntil, session, storefront, customerAccount, weaverse };
+}
 ```
 
-**Don't restructure their context creation** — just spread the Weaverse client into their existing return object.
+- Weaverse reads `storefront.i18n` (`language`, `country`, `pathPrefix`) for the content locale. If a market's Shopify `LanguageCode` differs from the locale its translations are keyed by (for example `ZH_TW` for a Hong Kong market), pass the market as `locale: { language, country, pathPrefix }` (`@weaverse/hydrogen` 6.1+) instead of relabeling the storefront client. Pilot passes `locale: resolveRequestLocale(request)`.
+- Optional: `throwPageLoadFailures: true` makes `loadPage()` reject with a `WeaverseLoadError` on a Weaverse outage, so a route can answer 503 instead of 404.
+- `server.ts` needs no Weaverse-specific change as long as it copies the whole context object onto `RouterContextProvider` (Pilot: `Object.assign(new RouterContextProvider(), appContext)`).
+
+**Don't restructure their context creation** — just add the client to the object they already return.
 
 ### 2.5 Update Root & Entry Files
 
 #### `app/root.tsx` — Wrap with `withWeaverse`
 
+Wrap the component that renders the document. Pilot wraps its `Layout` export:
+
 ```tsx
-import { withWeaverse } from "@weaverse/hydrogen";
+import { withWeaverse } from "@weaverse/hydrogen/react-router";
 import { GlobalStyle } from "~/weaverse/style";
 
-// Keep their existing Layout/App components untouched
-// Only change: wrap the default export
-
 // BEFORE:
-// export default function App() { ... }
+// export function Layout({ children }: { children: React.ReactNode }) { ... }
 
-// AFTER:
-function App() {
-  // ... their existing App code, unchanged
-}
-export default withWeaverse(App);
+// AFTER: same body, wrapped
+export const Layout = withWeaverse(function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // ... their existing Layout code, unchanged
+});
 ```
 
-Add `<GlobalStyle />` inside `<head>` in their Layout component.
+If the project has no `Layout` export, wrap the default `App` export instead (`export default withWeaverse(App)`). Add `<GlobalStyle />` inside `<head>`.
+
+The root loader also returns the theme settings: `weaverseTheme: await context.weaverse.loadThemeSettings()`.
 
 #### `app/entry.server.tsx` — Add Weaverse CSP
 
+Hydrogen 2026.10 no longer exports `createContentSecurityPolicy`, `NonceProvider` or `useNonce`; a 2026.10 project has its own port (Pilot: `app/utils/csp.ts`). Merge `getWeaverseCsp(request, context.env)` into whatever that helper takes. Pilot's version:
+
 ```tsx
+import {
+  createContentSecurityPolicy,
+  generateNonce,
+  NonceProvider,
+} from "~/utils/csp";
 import { getWeaverseCsp } from "~/weaverse/csp";
 
-// Inside handleRequest, merge Weaverse CSP with existing:
-const { nonce, header, NonceProvider } = createContentSecurityPolicy({
-  ...getWeaverseCsp(request, context),
-  shop: {
+// Inside handleRequest(request, responseStatusCode, responseHeaders, reactRouterContext, context):
+const nonce = generateNonce();
+const header = createContentSecurityPolicy(
+  nonce,
+  getWeaverseCsp(request, context.env),
+  {
     checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || context.env?.PUBLIC_STORE_DOMAIN,
     storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
   },
-});
+);
 ```
 
 Merge with their existing CSP config — don't replace it.
@@ -410,10 +457,9 @@ export default HeroBanner;
 **Converted component (after):**
 ```tsx
 // app/sections/hero-banner.tsx (or keep original path, just add schema)
-import type { HydrogenComponentProps } from "@weaverse/hydrogen";
-import { createSchema } from "@weaverse/hydrogen";
+import { createSchema, type WeaverseComponentProps } from "@weaverse/hydrogen/react-router";
 
-interface HeroBannerProps extends HydrogenComponentProps {
+interface HeroBannerProps extends WeaverseComponentProps {
   heading: string;
   subtitle: string;
   backgroundImage: string;
@@ -466,7 +512,7 @@ export let schema = createSchema({
 ```
 
 **Key changes:**
-- Extend `HydrogenComponentProps` (adds `children`, `loaderData`, and Weaverse internals)
+- Extend `WeaverseComponentProps` (adds `children`, `loaderData`, and Weaverse internals)
 - Spread `{...rest}` on root element (required for Studio interaction)
 - Render `{children}` if the component can accept nested sections
 - Add `schema` export with `createSchema()`
@@ -498,22 +544,33 @@ When creating schemas for converted components:
 If the original component fetches data (e.g., a featured collection), convert the data fetching to a Weaverse loader:
 
 ```tsx
-import type { ComponentLoaderArgs } from "@weaverse/hydrogen";
+import type { WeaverseComponentLoaderArgs } from "@weaverse/hydrogen/react-router";
+import { COLLECTION_QUERY } from "~/graphql/queries"; // a gql() document
+import { CACHE_DEFAULT } from "~/utils/cache";
+import { unwrapStorefront } from "~/utils/storefront";
 
 type SectionData = {
   collectionHandle: string;
   count: number;
 };
 
-export let loader = async ({ weaverse, data }: ComponentLoaderArgs<SectionData>) => {
+export let loader = async ({ weaverse, data }: WeaverseComponentLoaderArgs<SectionData>) => {
   if (!data?.collectionHandle) return null;
-  return weaverse.storefront.query(COLLECTION_QUERY, {
-    variables: { handle: data.collectionHandle, first: data.count ?? 8 },
-  });
+  return unwrapStorefront(
+    await weaverse.storefront.graphql(COLLECTION_QUERY, {
+      variables: { handle: data.collectionHandle, first: data.count ?? 8 },
+      cache: CACHE_DEFAULT,
+    }),
+  );
 };
 ```
 
-Use the project's existing GraphQL queries and fragments — don't rewrite them. If they have a `graphql/` directory with shared queries, import from there.
+- `weaverse.storefront` is the same 2026.10 client the routes use: `graphql(doc, { variables, cache })` returns `{ data, errors }` and does not throw. There is no `query()`.
+- Pass `cache` explicitly; 2026.10 has no default cache. Use the project's strategies (Pilot: `CACHE_DEFAULT`, `CACHE_SHORT`, `CACHE_LONG`, `CACHE_NONE` in `app/utils/cache.ts`, built with `Cache` from `@shopify/hydrogen`).
+- `unwrapStorefront` is Pilot's small helper (`app/utils/storefront.ts`) that throws on `errors`; reuse the project's equivalent if it has one.
+- Don't pass `country`/`language`; the client fills `$country`/`$language` from the request.
+
+Use the project's existing `gql()` documents and fragments — don't rewrite them. If they have a `graphql/` directory with shared queries, import from there.
 
 ### 3.5 Register Converted Components
 
@@ -524,7 +581,7 @@ import * as HeroBanner from "~/sections/hero-banner";
 import * as FeaturedCollection from "~/sections/featured-collection";
 // ... other converted components
 
-export let components: HydrogenComponent[] = [
+export let components: WeaverseComponent[] = [
   HeroBanner,
   FeaturedCollection,
   // ...
@@ -548,7 +605,9 @@ import HeroBanner from "~/components/hero-banner";
 import ProductGrid from "~/components/product-grid";
 
 export async function loader({ context, params }: LoaderFunctionArgs) {
-  const productData = await context.storefront.query(PRODUCT_QUERY, { ... });
+  const productData = await context.storefront
+    .graphql(PRODUCT_QUERY, { variables: { ... }, cache: CACHE_DEFAULT })
+    .then(unwrapStorefront);
   return { product: productData.product };
 }
 
@@ -568,11 +627,14 @@ export default function Homepage() {
 import { WeaverseContent } from "~/weaverse";
 
 export async function loader({ context, params }: LoaderFunctionArgs) {
-  // Keep existing data loading
-  const productData = await context.storefront.query(PRODUCT_QUERY, { ... });
-
-  // ADD Weaverse page loading
-  const weaverseData = await context.weaverse.loadPage({ type: "INDEX" });
+  const [productData, weaverseData] = await Promise.all([
+    // Keep existing data loading
+    context.storefront
+      .graphql(PRODUCT_QUERY, { variables: { ... }, cache: CACHE_DEFAULT })
+      .then(unwrapStorefront),
+    // ADD Weaverse page loading
+    context.weaverse.loadPage({ type: "INDEX" }),
+  ]);
 
   return {
     product: productData.product,
@@ -638,13 +700,19 @@ If the project uses:
 
 Add to the project's type definitions:
 
+If the project types React Router's context from its context factory (Pilot's `env.d.ts`), adding `weaverse` to the returned object is enough:
+
 ```ts
-// Wherever the project defines AppLoadContext
-interface AppLoadContext {
-  // ... existing properties
-  weaverse: import("@weaverse/hydrogen").WeaverseClient;
+// env.d.ts
+import type { AppContext } from "./app/.server/context"; // Awaited<ReturnType<typeof createAppContext>>
+
+declare module "react-router" {
+  interface AppLoadContext extends AppContext {}
+  interface RouterContextProvider extends AppContext {}
 }
 ```
+
+Otherwise add `weaverse: import("@weaverse/hydrogen/react-router").WeaverseClient` to its `AppLoadContext` declaration.
 
 ---
 
@@ -661,7 +729,7 @@ After integration, verify:
 - [ ] Component schemas expose the right editable settings
 - [ ] Data-fetching sections load data correctly
 - [ ] `npm run build` completes without errors
-- [ ] TypeScript compiles without new errors
+- [ ] `npm run typecheck` reports no new errors (on 2026.10 it also runs `hydrogen gql check`)
 - [ ] Cart, checkout, and customer account flows still work
 - [ ] No console errors related to CSP
 
@@ -679,7 +747,10 @@ After integration, verify:
 | Converting ALL components at once | Convert sections first, keep primitives as shared components |
 | Using `inspector` in schema | Use `settings` — `inspector` is deprecated |
 | Creating `app/weaverse/` outside `app/` | Must be inside the app directory |
-| Forgetting env vars in type definitions | Add WEAVERSE_* to the Env type |
+| Forgetting env vars in type definitions | `Env extends WeaverseEnv` |
+| Importing from root `@weaverse/hydrogen` or `/internal` | Import from `@weaverse/hydrogen/react-router` |
+| `weaverse.storefront.query(...)` in loaders | `weaverse.storefront.graphql(doc, { variables, cache })` |
+| `new WeaverseClient({ ...hydrogenContext })` | Pass `storefront`, `env`, `cache`, `waitUntil`, `request` explicitly |
 
 ---
 
@@ -694,10 +765,10 @@ After integration, verify:
 | `app/weaverse/components.ts` | **CREATE** — component registry |
 | `app/weaverse/index.tsx` | **CREATE** — WeaverseContent wrapper |
 | `app/weaverse/csp.ts` | **CREATE** — CSP configuration |
-| `server.ts` (or context file) | **MODIFY** — add WeaverseClient to context |
+| `app/.server/context.ts` (or the project's context factory) | **MODIFY** — add `WeaverseClient` to the request context |
 | `app/root.tsx` | **MODIFY** — wrap with `withWeaverse`, add `<GlobalStyle />` |
 | `app/entry.server.tsx` | **MODIFY** — merge Weaverse CSP |
 | `app/sections/*.tsx` | **CREATE/MODIFY** — converted components |
 | Route files | **MODIFY** — add `weaverse.loadPage()`, render `<WeaverseContent />` |
-| Type definitions | **MODIFY** — add WEAVERSE_* env vars, weaverse context |
+| `env.d.ts` | **MODIFY** — `Env extends WeaverseEnv`, `weaverse` on the context type |
 | `.gitignore` | **VERIFY** — `.react-router/` is ignored (RRv7 projects) |

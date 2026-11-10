@@ -12,13 +12,14 @@ Safely upgrade a Weaverse Pilot theme from its current version to a newer releas
 - Theme repo: https://github.com/Weaverse/pilot
 - Releases: https://github.com/Weaverse/pilot/releases
 - Package name: `@weaverse/pilot`
-- Versioning: `YYYY.M.D` (e.g., `2026.4.7`). Older: semver (`v8.1.0`)
+- Versioning: `YYYY.M.D` (e.g., `2026.11.7`). Older: semver (`v8.1.0`)
+- Platform boundary: `v2026.11.7` is the first Pilot release on Hydrogen 2026.10 and `@weaverse/hydrogen` 6. `v2026.10.4` is the last release on classic Hydrogen (2026.4) and `@weaverse/hydrogen` 5. See [Crossing the Hydrogen 2026.10 boundary](#crossing-the-hydrogen-202610-boundary).
 
 ## Quick Check
 
 ```bash
 node skills/theme-update/scripts/check_pilot_updates.mjs
-node skills/theme-update/scripts/check_pilot_updates.mjs --target v2026.4.7
+node skills/theme-update/scripts/check_pilot_updates.mjs --target v2026.11.7
 ```
 
 ---
@@ -45,6 +46,8 @@ curl -s "https://api.github.com/repos/Weaverse/pilot/releases?per_page=50"
    - Summary of key changes (features, fixes, breaking changes)
 
 **If already on latest → stop here and tell the user.**
+
+**If the range crosses `v2026.11.7` (current ≤ `v2026.10.4`) → read [Crossing the Hydrogen 2026.10 boundary](#crossing-the-hydrogen-202610-boundary) before planning.** A file-by-file merge across that release is not practical.
 
 ### Phase 2 — Branch
 
@@ -87,7 +90,9 @@ curl -sL "https://api.github.com/repos/Weaverse/pilot/tarball/v{TARGET}" | tar x
 #### Needs review (show diff, get approval)
 - `app/components/` — UI components user may have customized
 - `app/routes/` — route files user may have modified
-- `app/lib/` — utility modules
+- `app/utils/`, `app/lib/` — utility modules
+- `server.ts`, `app/.server/` — request lifecycle and request context (`createAppContext()`, cart, customer account, storefront client)
+- `app/weaverse/` — component registry, theme schema, CSP
 - `app/root.tsx`, `app/entry.client.tsx`, `app/entry.server.tsx`
 - `app/styles/` — CSS/Tailwind changes
 - Any file where the user has local changes (`git diff` shows modifications from Pilot base)
@@ -265,14 +270,43 @@ git push origin main
 - **Route structure**: If user reorganized routes, don't force Pilot's structure — apply route logic changes to user's structure instead
 - **CSS conflicts**: Pilot may change Tailwind classes or base styles — these need careful merge to avoid breaking user styling
 
+## Crossing the Hydrogen 2026.10 boundary
+
+Pilot `v2026.11.7` ([Weaverse/pilot#209](https://github.com/Weaverse/pilot/pull/209)) moved from classic Hydrogen 2026.4 + `@weaverse/hydrogen` 5 to Hydrogen 2026.10 + `@weaverse/hydrogen` 6. It rewrote the request wiring (`server.ts`, `app/.server/context.ts`), the data layer (`storefront.graphql(gql(...))` with explicit caches, no codegen), the cart, the product form, customer accounts and analytics. A `v2026.10.4` → `v2026.11.7` diff touches almost every file, so the per-file buckets above stop being useful.
+
+For a fork on `v2026.10.4` or older:
+
+1. Update to `v2026.10.4` first with the normal procedure, so only the platform jump remains.
+2. Pick a path with the user:
+   - **Recommended:** take Pilot `v2026.11.7` (or later) as the new base and re-apply the customizations on top. List them with `git diff v{CURRENT}` against the Pilot tag the fork started from.
+   - **In place:** follow [`upgrade-2026.4.7-to-2026.10.2.md`](../hydrogen-upgrades/references/upgrade-2026.4.7-to-2026.10.2.md) step by step.
+3. Either way, run the Weaverse codemod on the custom sections and components. It moves imports to `@weaverse/hydrogen/react-router` and renames the `Hydrogen*` types to `Weaverse*`:
+
+   ```bash
+   npx @weaverse/cli@latest migrate v6 --dry-run   # list the files it would change
+   npx @weaverse/cli@latest migrate v6
+   ```
+
+   It does not port queries: custom section loaders and routes still need `storefront.graphql(gql(...), { variables, cache })` by hand.
+4. Verify with the target's own scripts: `npm run typecheck` (also runs `hydrogen gql check --fail-on-warn`) and `npm run build`. Test Customer Account login with `npm run dev:https`.
+
+Weaverse content (pages, theme settings, translations) is not affected by the upgrade.
+
 ## SDK-Only Bumps (`@weaverse/hydrogen`)
 
-Sometimes the ask is only "update the Weaverse SDK", not a full theme update. Verified procedure (used for a 5.5.0 → 5.15.1 client jump):
+Sometimes the ask is only "update the Weaverse SDK", not a full theme update.
 
-1. **Baseline before bumping.** Run `npx react-router typegen && npm run typecheck` on the CURRENT version and record every error (client forks usually have pre-existing failures). After the bump, diff against this baseline — you only own the delta. Without the baseline you'll chase errors that were always there.
-2. **Peer check first**: `npm view @weaverse/hydrogen@<target> peerDependencies`. 5.15.x/5.16.x need `@shopify/hydrogen >=2025.5`, react 19, react-router 7, `@shopify/remix-oxygen` 3. `react-error-boundary` and `@weaverse/schema` arrive transitively — their absence in the theme's package.json is fine.
-3. **Known break at 5.15**: `errorComponent` is typed `FC<{ error: unknown }>` (was an Error-like object). Port upstream Pilot's `GenericError`, which narrows at runtime (`error && typeof error === "object" && "message" in error`).
-4. Finish with full `shopify hydrogen build --codegen` — typecheck alone misses bundler-level issues.
+- **Within a major** (5.x → 5.y, or 6.x → 6.y) it is a dependency bump.
+- **5.x → 6.x is not SDK-only.** `@weaverse/hydrogen` 6 has a peer dependency on `@shopify/hydrogen >=2026.10.0`, so it requires the Hydrogen 2026.10 upgrade above. Themes that stay on Hydrogen 2026.4 or earlier stay on `@weaverse/hydrogen` 5.x.
+
+Procedure:
+
+1. **Baseline before bumping.** Run `npm run typecheck` on the CURRENT version and record every error (client forks usually have pre-existing failures). After the bump, diff against this baseline — you only own the delta. Without the baseline you'll chase errors that were always there.
+2. **Peer check first**: `npm view @weaverse/hydrogen@<target> peerDependencies`. `react-error-boundary` and `@weaverse/schema` arrive transitively — their absence in the theme's package.json is fine.
+3. **Keep the version group aligned.** `@weaverse/hydrogen` 6 pins exact `@weaverse/react` and `@weaverse/next` versions. If the theme's `package.json` also lists either, align them; two copies of `@weaverse/react` have separate React contexts and components stop finding their data.
+4. **Known 6.x additions**: 6.1.0 adds the `WeaverseClient` `locale` option, for markets whose Shopify language differs from the locale Weaverse keys translations by (Pilot passes `resolveRequestLocale(request)` in `app/.server/context.ts`).
+5. **Known break at 5.15** (5.x themes): `errorComponent` is typed `FC<{ error: unknown }>` (was an Error-like object). Port upstream Pilot's `GenericError`, which narrows at runtime (`error && typeof error === "object" && "message" in error`).
+6. Finish with a full `npm run build` — typecheck alone misses bundler-level issues.
 
 ## Weaverse-Internal: Pilot Lock & Demo Deploy
 
