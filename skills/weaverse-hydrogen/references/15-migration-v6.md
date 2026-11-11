@@ -18,7 +18,7 @@ Themes close to Pilot usually migrate fastest by creating a new project from the
 | Package | Version |
 |---|---|
 | `@shopify/hydrogen` | `^2026.10.2` |
-| `@weaverse/hydrogen` | `^6.1.0` (6.0.0 pins `@weaverse/react` 6.0.0 and `@weaverse/next` 1.1.0; align them if your `package.json` lists them) |
+| `@weaverse/hydrogen` | `^6.1.0` (pins an exact `@weaverse/react`; align it if your `package.json` lists it. `@weaverse/next` is deprecated: from 6.2.0 the Next.js adapter is `@weaverse/hydrogen/next`, so drop `@weaverse/next` from `package.json`) |
 | `react-router`, `@react-router/dev` | Same 7.x version (Pilot: `7.18.5`); React Router 8 is not supported yet |
 
 Classic projects that are not migrating yet should pin `@shopify/hydrogen` to `~2026.4.x` and stay on `@weaverse/hydrogen` 5.x.
@@ -31,9 +31,10 @@ npx @weaverse/cli@latest migrate v6
 git diff
 ```
 
-It only touches files that import `@weaverse/hydrogen` or `@weaverse/next`:
+It only touches files that import `@weaverse/hydrogen` or the deprecated `@weaverse/next`:
 
 - Imports move to the new entry points: `@weaverse/hydrogen` → `@weaverse/hydrogen/react-router` (Hydrogen/React Router themes import everything from there).
+- Next.js imports move into `@weaverse/hydrogen`: `@weaverse/next` → `@weaverse/hydrogen/next`, `@weaverse/next/server` → `@weaverse/hydrogen/next/server`. Export names are unchanged.
 - Types are renamed as whole words in each file that imports Weaverse, so a local type with the same name is renamed too. Review the diff.
 
 | v5 | v6 |
