@@ -131,7 +131,7 @@ Find components that are good candidates for Weaverse sections:
 npm install @weaverse/hydrogen@latest
 ```
 
-`@weaverse/hydrogen` 6 pins exact versions of `@weaverse/react` and `@weaverse/next`. Don't add either to `package.json`; if one is already there, align it to the version `@weaverse/hydrogen` depends on (`npm view @weaverse/hydrogen dependencies`), or two copies of `@weaverse/react` break the React context.
+`@weaverse/hydrogen` 6 pins an exact `@weaverse/react` version. Don't add it to `package.json`; if it is already there, align it to the version `@weaverse/hydrogen` depends on (`npm view @weaverse/hydrogen dependencies`), or two copies of `@weaverse/react` break the React context. Never install `@weaverse/next`: it is deprecated in favour of `@weaverse/hydrogen/next` (6.2.0+), and `npx @weaverse/cli@latest migrate v6` rewrites its imports.
 
 Import everything from `@weaverse/hydrogen/react-router`. Never import from `@weaverse/hydrogen/internal` (Studio and CLI only).
 
