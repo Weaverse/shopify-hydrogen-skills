@@ -48,7 +48,16 @@ Weaverse is a visual page builder for Shopify Hydrogen. It lets merchants custom
 
 **Stack:** React 19 · React Router 7 · Shopify Hydrogen 2026.10 · `@weaverse/hydrogen` 6 · TypeScript · Tailwind CSS · Vite
 
-> **Versions.** This skill targets `@weaverse/hydrogen` 6.x on `@shopify/hydrogen` 2026.10+, as implemented by [Pilot](https://github.com/Weaverse/pilot) `main`. Import everything from `@weaverse/hydrogen/react-router` (never `@weaverse/hydrogen/internal`, which is reserved for Weaverse's own tooling). Themes still on Hydrogen 2026.4 or earlier use `@weaverse/hydrogen` 5.x: see [references/15-migration-v6.md](references/15-migration-v6.md) to upgrade.
+> **Check the version first.** Before writing any Weaverse code, read `@weaverse/hydrogen` in the project's `package.json`. The two majors import from different entries and use different type names, so code for one does not build on the other.
+>
+> | | `@weaverse/hydrogen` 6.x (Hydrogen 2026.10+) | `@weaverse/hydrogen` 5.x (Hydrogen 2026.4 and earlier) |
+> | --- | --- | --- |
+> | Imports | `@weaverse/hydrogen/react-router` | `@weaverse/hydrogen` |
+> | Component props | `WeaverseComponentProps` | `HydrogenComponentProps` |
+> | Loader args | `WeaverseComponentLoaderArgs` | `ComponentLoaderArgs` |
+> | Schema / theme types | `WeaverseComponentSchema`, `WeaverseThemeSchema`, `WeaverseThemeSettings` | `HydrogenComponentSchema`, `HydrogenThemeSchema`, `HydrogenThemeSettings` |
+>
+> This skill, its references and [Pilot](https://github.com/Weaverse/pilot) `main` use 6.x. On a 5.x project, write the 5.x names from the table (the full map is in [references/15-migration-v6.md](references/15-migration-v6.md)) and never mix majors in one project. Upgrade a 5.x theme to 6.x only when asked: it also needs the Hydrogen 2026.10 upgrade. Never import from `@weaverse/hydrogen/internal`, which is reserved for Weaverse's own tooling.
 
 ---
 
