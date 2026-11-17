@@ -59,7 +59,7 @@ Select your agents and installation scope when prompted. Powered by [skills.sh](
 This installs skills, not store access. Codex, Cursor, and other MCP clients use
 the local `npx -y @weaverse/mcp` server with a Content API key. Create the key in
 [Dashboard → Account → API Keys](https://studio.weaverse.io/dashboard/account),
-then use the [Codex, Cursor, or other client configuration](https://docs.weaverse.io/developer-tools/weaverse-mcp#install--configure-weaversemcp-local).
+then use the [Codex, Cursor, or other client configuration](https://docs.weaverse.io/developer-tools/weaverse-mcp#client-configuration).
 Keep the key private and out of version control. Revoke it under **API Keys**;
 **Connected AI apps** manages hosted sign-in connections, not API keys.
 

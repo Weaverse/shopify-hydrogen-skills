@@ -47,7 +47,7 @@ Select your agent and installation scope when prompted. Powered by [skills.sh](h
 For store access, Codex, Cursor, and other MCP clients use the local
 `npx -y @weaverse/mcp` server with `WEAVERSE_API_KEY`. Create a Content API key
 in [Dashboard → Account → API Keys](https://studio.weaverse.io/dashboard/account),
-then follow the [per-agent connection steps](https://docs.weaverse.io/developer-tools/weaverse-mcp#install--configure-weaversemcp-local).
+then follow the [per-agent connection steps](https://docs.weaverse.io/developer-tools/weaverse-mcp#client-configuration).
 Keep keys private and out of version control.
 
 Review or disconnect hosted access in
