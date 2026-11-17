@@ -8,13 +8,56 @@ Agent skills for building, maintaining, and upgrading Shopify Hydrogen storefron
 
 ## Quick Install
 
+### Claude Code: Skills and Store Connection
+
+Run this in your terminal with [Claude Code 2.1.292 or later](https://code.claude.com/docs/en/plugins/install#add-and-install-from-your-shell):
+
+```bash
+claude plugin install weaverse --marketplace Weaverse/shopify-hydrogen-skills
+```
+
+This adds our repository-hosted marketplace and installs the `weaverse` plugin
+for your Claude Code user. The plugin includes every skill in `skills/` and
+registers the hosted `weaverse` MCP server at `https://mcp.weaverse.io/mcp`.
+No Content API key is needed.
+
+Start a new Claude Code session, open `/mcp`, and authenticate the Weaverse
+server. Sign in with your Shopify store and review the requested access; leave
+optional permissions unchecked for read-only use. Ask the agent to call
+`list_projects` to check which store it can see. Plugin skills use names such as
+`/weaverse:setup-weaverse-project`.
+
+Update with `claude plugin update weaverse@weaverse`; auto-update is off by default
+for third-party marketplaces. Enable it in `/plugin` → **Marketplaces** →
+**weaverse** → **Enable auto-update** ([guide](https://code.claude.com/docs/en/plugins/install#keep-plugins-updated)).
+
+Already installed the skills with `npx skills add`? Keep them and add just the
+store connection instead:
+
+```bash
+claude mcp add --transport http weaverse https://mcp.weaverse.io/mcp
+```
+
+### Codex, Cursor, and Other Agents
+
+The skills-only installation is unchanged:
+
 ```bash
 npx skills add Weaverse/shopify-hydrogen-skills
 ```
 
-Auto-detects your coding agents and installs to all of them. Powered by [skills.sh](https://skills.sh).
+Select your agent and installation scope when prompted. Powered by [skills.sh](https://skills.sh).
 
-For manual per-agent setup, see [INSTALL.md](INSTALL.md).
+For store access, Codex, Cursor, and other MCP clients use the local
+`npx -y @weaverse/mcp` server with `WEAVERSE_API_KEY`. Create a Content API key
+in [Dashboard → Account → API Keys](https://studio.weaverse.io/dashboard/account),
+then follow the [per-agent connection steps](https://docs.weaverse.io/developer-tools/weaverse-mcp#client-configuration).
+Keep keys private and out of version control.
+
+Review or disconnect hosted access in
+[Dashboard → Account → Connected AI apps](https://studio.weaverse.io/dashboard/account).
+Revoke local-server API keys under **API Keys** on the same page.
+For older Claude Code versions and manual per-agent setup, see [INSTALL.md](INSTALL.md).
 
 ---
 

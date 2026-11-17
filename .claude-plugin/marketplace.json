@@ -1,0 +1,14 @@
+{
+  "name": "weaverse",
+  "owner": {
+    "name": "Weaverse",
+    "url": "https://weaverse.io"
+  },
+  "description": "Skills and store connection for Shopify Hydrogen development with Weaverse.",
+  "plugins": [
+    {
+      "name": "weaverse",
+      "source": "./"
+    }
+  ]
+}

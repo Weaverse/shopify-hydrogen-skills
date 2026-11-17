@@ -1,0 +1,11 @@
+{
+  "name": "weaverse",
+  "description": "Shopify Hydrogen and Weaverse skills with the hosted Weaverse MCP server.",
+  "author": {
+    "name": "Weaverse",
+    "url": "https://weaverse.io"
+  },
+  "homepage": "https://docs.weaverse.io/developer-tools/shopify-hydrogen-skills",
+  "repository": "https://github.com/Weaverse/shopify-hydrogen-skills",
+  "license": "MIT"
+}
