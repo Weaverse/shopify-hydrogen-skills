@@ -7,15 +7,64 @@ Do **not** skip ahead — wait for the user's response before proceeding.
 
 ## Quick Install (Recommended)
 
-The fastest way to install:
+### Claude Code: Skills and MCP Together
+
+With [Claude Code 2.1.292 or later](https://code.claude.com/docs/en/plugins/install#add-and-install-from-your-shell),
+run one command in your terminal:
+
+```bash
+claude plugin install weaverse --marketplace Weaverse/shopify-hydrogen-skills
+```
+
+This adds the repository-hosted `weaverse` marketplace and installs the
+`weaverse` plugin at user scope. All skills stay in their existing `skills/`
+folders; the plugin also registers `weaverse` as an HTTP MCP server at
+`https://mcp.weaverse.io/mcp`.
+
+On an older Claude Code version that supports plugins, add the marketplace first:
+
+```bash
+claude plugin marketplace add Weaverse/shopify-hydrogen-skills
+claude plugin install weaverse@weaverse
+```
+
+Start a new session, open `/mcp`, and authenticate the Weaverse server. Sign in
+with the Shopify store you want to connect and review its requested access.
+Leave optional permissions unchecked for read-only use. Ask the agent to call
+`list_projects`; it should show only that store's projects. Invoke plugin skills
+with their namespace, for example `/weaverse:setup-weaverse-project`.
+
+Installing does not approve store access. No Content API key is needed for this
+hosted connection. Review or disconnect it in
+[Dashboard → Account → Connected AI apps](https://studio.weaverse.io/dashboard/account).
+
+If you already installed the skills with `npx skills add`, keep that install and
+add only the hosted server:
+
+```bash
+claude mcp add --transport http weaverse https://mcp.weaverse.io/mcp
+```
+
+Then authenticate through `/mcp` as above. This command uses Claude Code's
+default local scope (only you, in the current project).
+
+### Skills Only: Codex, Cursor, and Other Agents
 
 ```bash
 npx skills add Weaverse/shopify-hydrogen-skills
 ```
 
-This auto-detects which coding agents you have installed (Claude Code, Cursor, OpenCode, OpenClaw, Codex, Windsurf, Gemini CLI, GitHub Copilot, and 40+ more) and installs the skills to all of them. Powered by [skills.sh](https://skills.sh).
+Select your agents and installation scope when prompted. Powered by [skills.sh](https://skills.sh).
 
-If `npx skills add` works, you're done — skip to [Step 4](#step-4--confirm-installation).
+This installs skills, not store access. Codex, Cursor, and other MCP clients use
+the local `npx -y @weaverse/mcp` server with a Content API key. Create the key in
+[Dashboard → Account → API Keys](https://studio.weaverse.io/dashboard/account),
+then use the [Codex, Cursor, or other client configuration](https://docs.weaverse.io/developer-tools/weaverse-mcp#install--configure-weaversemcp-local).
+Keep the key private and out of version control. Revoke it under **API Keys**;
+**Connected AI apps** manages hosted sign-in connections, not API keys.
+
+If `npx skills add` works, skip to [Step 4](#step-4--confirm-installation) to
+confirm the skills.
 
 If you prefer manual per-agent setup or `npx skills` isn't available, continue below.
 

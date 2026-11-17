@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "weaverse": {
+      "type": "http",
+      "url": "https://mcp.weaverse.io/mcp"
+    }
+  }
+}
