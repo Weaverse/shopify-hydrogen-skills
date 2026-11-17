@@ -38,6 +38,10 @@ Installing does not approve store access. No Content API key is needed for this
 hosted connection. Review or disconnect it in
 [Dashboard → Account → Connected AI apps](https://studio.weaverse.io/dashboard/account).
 
+Update with `claude plugin update weaverse@weaverse`; auto-update is off by default
+for third-party marketplaces. Enable it in `/plugin` → **Marketplaces** →
+**weaverse** → **Enable auto-update** ([guide](https://code.claude.com/docs/en/plugins/install#keep-plugins-updated)).
+
 If you already installed the skills with `npx skills add`, keep that install and
 add only the hosted server:
 

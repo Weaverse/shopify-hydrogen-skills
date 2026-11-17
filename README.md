@@ -27,6 +27,10 @@ optional permissions unchecked for read-only use. Ask the agent to call
 `list_projects` to check which store it can see. Plugin skills use names such as
 `/weaverse:setup-weaverse-project`.
 
+Update with `claude plugin update weaverse@weaverse`; auto-update is off by default
+for third-party marketplaces. Enable it in `/plugin` → **Marketplaces** →
+**weaverse** → **Enable auto-update** ([guide](https://code.claude.com/docs/en/plugins/install#keep-plugins-updated)).
+
 Already installed the skills with `npx skills add`? Keep them and add just the
 store connection instead:
 
