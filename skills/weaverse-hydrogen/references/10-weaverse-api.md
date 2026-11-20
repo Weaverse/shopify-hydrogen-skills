@@ -100,8 +100,11 @@ let weaverseData = await context.weaverse.loadPage({ type: 'PRODUCT', handle: pa
 // Collection page
 let weaverseData = await context.weaverse.loadPage({ type: 'COLLECTION', handle: params.handle });
 
-// Custom page
-let weaverseData = await context.weaverse.loadPage({ type: 'PAGE', handle: params.handle });
+// Shopify page (/pages/:pageHandle)
+let weaverseData = await context.weaverse.loadPage({ type: 'PAGE', handle: params.pageHandle });
+
+// Weaverse custom page (the `*` catch-all): the handle comes from the request URL
+let weaverseData = await context.weaverse.loadPage({ type: 'CUSTOM' });
 
 // Blog
 let weaverseData = await context.weaverse.loadPage({ type: 'BLOG', handle: params.blogHandle });
