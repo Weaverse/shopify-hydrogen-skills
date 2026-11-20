@@ -655,11 +655,14 @@ export default function Homepage() {
 | Homepage (`_index`) | `"INDEX"` |
 | Product page | `"PRODUCT"` (with `handle: params.productHandle`) |
 | Collection page | `"COLLECTION"` (with `handle: params.collectionHandle`) |
-| Collections list | `"ALL_PRODUCTS"` |
-| Blog | `"BLOG"` |
+| Collections list (`/collections`) | `"COLLECTION_LIST"` |
+| All products (`/products`) | `"ALL_PRODUCTS"` |
+| Blog | `"BLOG"` (with `handle: params.blogHandle`) |
 | Article | `"ARTICLE"` (with `handle: params.articleHandle`) |
-| Custom page | `"PAGE"` (with `handle: params.pageHandle`) |
-| Custom template | `"CUSTOM"` |
+| Shopify page (`/pages/:pageHandle`) | `"PAGE"` (with `handle: params.pageHandle`) |
+| Weaverse custom page (the `*` catch-all) | `"CUSTOM"` (no `handle`: resolved from the request URL) |
+
+Studio opens a Weaverse custom page at `/<handle>`, after the market's path prefix, and the theme schema's `routes` cannot remap `CUSTOM`. Keep a route that answers that URL with `loadPage({ type: "CUSTOM" })`, usually the `*` catch-all. If a root-level route serves another resource (for example `:handle` for collections), make it fall back to the custom page when its own resource is missing. See [Custom Pages](https://weaverse.io/docs/features/custom-pages#where-studio-opens-a-custom-page).
 
 ### 4.3 Gradual Migration (Recommended)
 

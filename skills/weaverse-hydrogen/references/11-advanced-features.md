@@ -103,11 +103,11 @@ Create custom URL structures mapped to Weaverse page types.
 
 ```tsx
 // app/routes/custom/page.tsx, registered in app/routes.ts as route('custom/:slug', ...)
-export async function loader({ context, params }: LoaderFunctionArgs) {
-  let weaverseData = await context.weaverse.loadPage({
-    type: 'CUSTOM',
-    handle: params.slug,
-  });
+export async function loader({ context }: LoaderFunctionArgs) {
+  // No `handle`: Weaverse resolves the custom page from the full path, so
+  // `/custom/summer` serves the custom page whose handle is `custom/summer`.
+  let weaverseData = await context.weaverse.loadPage({ type: 'CUSTOM' });
+  validateWeaverseData(weaverseData); // from ~/weaverse: 404 when no page matches
 
   return { weaverseData };
 }
@@ -116,6 +116,8 @@ export default function CustomPage() {
   return <WeaverseContent />; // WeaverseHydrogenRoot wrapper from ~/weaverse
 }
 ```
+
+Studio opens a custom page at `/<handle>` after the market's path prefix, and the theme schema's `routes` cannot remap `CUSTOM`. Leaving `handle` out keeps the public URL and the Studio preview on the same path; passing `handle: params.slug` would load `summer` at `/custom/summer` while Studio opens `custom/summer` there. Root-level custom pages need the `*` catch-all, and a root-level route for another resource (for example `:handle` for collections) must fall back to the custom page when its own resource is missing. See [Custom Pages](https://weaverse.io/docs/features/custom-pages#where-studio-opens-a-custom-page).
 
 ### Multiple Templates per Type
 
