@@ -86,6 +86,7 @@ curl -sL "https://api.github.com/repos/Weaverse/pilot/tarball/v{TARGET}" | tar x
 - `tsconfig.json`, `vite.config.ts`, `tailwind.config.ts` — ONLY if user hasn't customized them
 - New files that don't exist in user's project (additive only)
 - `.github/`, `CHANGELOG.md`, `LICENSE`
+- `.agents/skills/`, `.claude/skills/` — Hydrogen's packaged skills; regenerate them with `npx @shopify/hydrogen skills sync` after the dependency update instead of merging them by hand
 
 #### Needs review (show diff, get approval)
 - `app/components/` — UI components user may have customized
@@ -198,6 +199,9 @@ bun run typecheck
 
 # 3. Build check
 bun run build
+
+# 4. Hydrogen 2026.10 themes: refresh Hydrogen's packaged skills for the new version
+npx @shopify/hydrogen skills sync
 ```
 
 **If build fails:**
@@ -291,6 +295,8 @@ For a fork on `v2026.10.4` or older:
 4. Verify with the target's own scripts: `npm run typecheck` (also runs `hydrogen gql check --fail-on-warn`) and `npm run build`. Test Customer Account login with `npm run dev:https`.
 
 Weaverse content (pages, theme settings, translations) is not affected by the upgrade.
+
+Pilot `v2026.11.13` ([Weaverse/pilot#228](https://github.com/Weaverse/pilot/pull/228)) then moved to `@shopify/hydrogen` 2026.10.3: `app/utils/csp.ts` and `useNonce` are gone (the CSP comes from Hydrogen's `createContentSecurityPolicy` plus `getWeaverseStudioCspDirectives`), and markets use `defineShopifyI18n` with `storefront.locale`. A fork with custom CSP sources or `storefront.i18n` reads needs those moved by hand; [`upgrade-2026.10.2-to-2026.10.3.md`](../hydrogen-upgrades/references/upgrade-2026.10.2-to-2026.10.3.md) lists the steps. Stores also register `<origin>/account/signed-out` as a Customer Account logout URI.
 
 ## SDK-Only Bumps (`@weaverse/hydrogen`)
 

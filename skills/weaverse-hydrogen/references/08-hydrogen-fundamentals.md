@@ -12,7 +12,7 @@ Hydrogen is Shopify's toolkit for custom headless storefronts. Since 2026.10 it 
 - `@shopify/hydrogen/customer-account` — `createCustomerSession`, `createCustomerAccountServerHandlers`, `createCustomerAccountClient`, `gql` for Customer Account documents
 - `@shopify/hydrogen/vite` — `localHttps()`; `oxygen()` comes from `@shopify/mini-oxygen/vite`
 
-Gone in 2026.10: `createHydrogenContext`, `storefront.query()`/`mutate()`, `CartForm`, `Analytics.*`, `Image`, `Money`, `Pagination`, `getPaginationVariables`, `getSeoMeta`, the CSP helpers, `@shopify/remix-oxygen`, the `hydrogen()` Vite plugin and GraphQL codegen. `@shopify/hydrogen` 2026.10 also ships agent skills in `node_modules/@shopify/hydrogen/skills/`.
+Gone in 2026.10: `createHydrogenContext`, `storefront.query()`/`mutate()`, `CartForm`, `Analytics.*`, `Image`, `Money`, `Pagination`, `getPaginationVariables`, `getSeoMeta`, the classic CSP helpers (`NonceProvider`, `useNonce`; `createContentSecurityPolicy` is back in 2026.10.3 with a new signature), `@shopify/remix-oxygen`, the `hydrogen()` Vite plugin and GraphQL codegen. `@shopify/hydrogen` 2026.10 also ships agent skills in `node_modules/@shopify/hydrogen/skills/`; copy them into the project with `npx @shopify/hydrogen skills sync` and re-run it after each upgrade.
 
 ## Storefront API
 
@@ -145,10 +145,12 @@ navigation, cart, accounts, SEO, and production configuration. Use the
 skill for the canonical end-to-end procedure and verification matrix.
 
 Do not accept arbitrary locale-shaped route segments or maintain a second
-locale map in this reference. Derive the request's `i18n` from the storefront's
-merchant-specific market allowlist and pass it to `createShopifyRequestContext()`.
-`storefront.graphql()` then fills `$country`/`$language` from it; don't pass them
-in `variables`. When the market's Shopify `LanguageCode` differs from the locale
+locale map in this reference. Build a module-scope `defineShopifyI18n()`
+definition from the storefront's merchant-specific market allowlist and pass it
+as `i18n` to `createShopifyRequestContext()`; the request's market is then
+`storefront.locale` (`storefront.i18n` and a fixed per-request `i18n` object are
+deprecated in 2026.10.3). `storefront.graphql()` fills `$country`/`$language`
+from it; don't pass them in `variables`. When the market's Shopify `LanguageCode` differs from the locale
 Weaverse keys translations by, pass the market to `WeaverseClient` as `locale`
 (`@weaverse/hydrogen` 6.1+).
 
@@ -162,7 +164,7 @@ Hydrogen 2026.10 removed the classic UI helpers. Pilot ports them as local files
 | `Money`, `useMoney` | `~/components/money` |
 | `Pagination`, `getPaginationVariables` | `~/components/pagination`, `~/utils/pagination` |
 | `getSeoMeta`, `SeoConfig` | `~/utils/seo-meta` |
-| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` | `~/utils/csp` |
+| `NonceProvider`, `useNonce` | Not needed: Pilot calls Hydrogen 2026.10.3's `createContentSecurityPolicy({ nonce: false, ... })` in `entry.server.tsx` |
 | `ExternalVideo`, `ModelViewer` | `~/components/product-media/` |
 | `ShopPayButton` | `ShopPayButton` from `@shopify/hydrogen/react` |
 | `Analytics.*` | `ShopifyScripts` and `useCartAnalytics` from `@shopify/hydrogen/react`, plus route trackers |

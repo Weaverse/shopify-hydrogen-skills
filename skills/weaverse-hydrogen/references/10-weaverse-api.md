@@ -71,7 +71,7 @@ const weaverse = new WeaverseClient({
 ```
 
 - `WeaverseClient` no longer takes a spread classic Hydrogen context (`createHydrogenContext()` is gone in 2026.10).
-- Without `locale`, Weaverse reads `storefront.i18n` (`language`, `country`, `pathPrefix`). Pass `locale` when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market): it sets the Translation Manager locale, the locale sent with page requests and `requestInfo.i18n`, while the Storefront API keeps its own `i18n`. Pilot passes `resolveRequestLocale(request)`.
+- Without `locale`, Weaverse reads `storefront.locale` (`language`, `country`, `pathPrefix`). Pass `locale` when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market): it sets the Translation Manager locale, the locale sent with page requests and `requestInfo.i18n`, while the Storefront API keeps its own locale. Pilot passes `resolveRequestLocale(request)`.
 - `projectId` and `fetchTimeoutMs` are also accepted.
 
 ### loadPage()

@@ -22,7 +22,7 @@ You need this if you're:
 - Setting up tracking on a Hydrogen storefront with **Weaverse** as the CMS layer.
 - Investigating why **Oxygen full-page cache** is being disabled despite a correct `Oxygen-Cache-Control` header.
 
-If you just want page_view + Hydrogen's cart events (`<ShopifyScripts>` + `useCartAnalytics()`) forwarded to GA4 via GTM, Shopify's packaged `hydrogen-analytics` skill (`node_modules/@shopify/hydrogen/skills/hydrogen-analytics/`) is enough. Come here when you need the full funnel.
+If you just want page_view + Hydrogen's cart events (`<ShopifyScripts>` + `useCartAnalytics()`) forwarded to GA4 via GTM, Shopify's packaged `hydrogen-analytics` skill (`node_modules/@shopify/hydrogen/skills/hydrogen-analytics/`; copy it into the project with `npx @shopify/hydrogen skills sync`) is enough. Come here when you need the full funnel.
 
 > **Hydrogen 2026.10.** This skill targets Hydrogen 2026.10 and `@weaverse/hydrogen` 6, with Pilot `main` as the reference implementation. Classic analytics (`Analytics.Provider`, `<Analytics.*View>`, `useAnalytics()`, `getShopAnalytics`) and `CartForm` / `context.cart` are gone; see [`architecture.md`](./references/architecture.md#the-hydrogen-202610-analytics-bus) for what replaces them. To migrate a classic storefront first, use the `hydrogen-upgrades` skill.
 
@@ -98,7 +98,7 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 | [`webhook-forwarding-via-builder.md`](./references/webhook-forwarding-via-builder.md) | **Weaverse-hosted storefronts:** how Shopify webhooks reach your storefront without leaking the multi-tenant app client secret. Uses the builder `WebhookForward` model + per-store signing secrets. |
 | [`cart-attribute-stash.md`](./references/cart-attribute-stash.md) | Bridging the **webhook cookie gap**: how to get `_fbp` / `_fbc` / `gclid` / affiliate click IDs from the browser into the Shopify orders webhook. Covers the cart entry paths (`POST /api/cart` AND the `/cart/<id>:<qty>` permalink loader) that both need stash logic. |
 | [`oxygen-full-page-cache.md`](./references/oxygen-full-page-cache.md) | Configuring FPC, why `Set-Cookie` disables it, keeping documents anonymous on Hydrogen 2026.10. |
-| [`csp-for-tracking.md`](./references/csp-for-tracking.md) | CSP directives that allow Google/Meta/Hotjar; nonce vs strict-dynamic; GTM Custom HTML tags and inline-script violations. |
+| [`csp-for-tracking.md`](./references/csp-for-tracking.md) | CSP directives that allow Google/Meta/Hotjar with Hydrogen 2026.10.3's `createContentSecurityPolicy`; cacheable `nonce: false` vs nonce + `strict-dynamic`; GTM Custom HTML tags and inline-script violations. |
 | [`gotchas.md`](./references/gotchas.md) | The bugs that bite every implementation. Read this first if something isn't working. |
 
 ---
@@ -107,7 +107,7 @@ Read these in order if you're implementing from scratch. Skip to the relevant on
 
 1. **Using the bus's `PRODUCT_ADD_TO_CART` event for `add_to_cart`.** `useCartAnalytics()` publishes it only after the cart store confirms the change with Shopify, so a navigation that follows the click (Buy now, checkout redirect) often drops it — events miss GA4 DebugView entirely. **Fix:** fire `add_to_cart` directly from the button onClick handler via `sendBeacon` (it survives the form submit / navigation).
 
-2. **Loading GTM after hydration without a nonce** (classic Hydrogen's `<Script waitForHydration>`, or any DOM-injected loader). It hides GTM from Tag Assistant standalone scans and blocks the move to nonce-based `strict-dynamic` CSP. **Fix:** load `gtm.js` as a regular `<script async nonce={nonce}>` in `<head>`, with the inline `gtm.start` + Consent Mode v2 default-deny block before it.
+2. **Loading GTM after hydration** (classic Hydrogen's `<Script waitForHydration>`, or any DOM-injected loader) when Tag Assistant standalone scans matter, or when the store wants a nonce-based `strict-dynamic` CSP. Post-hydration injection hides GTM from the scan, and an injected script carries no nonce. **Fix:** load `gtm.js` as a regular `<script async>` in `<head>` (add `nonce={nonce}` in nonce mode), with the inline `gtm.start` + Consent Mode v2 default-deny block before it. Pilot deliberately lazy-loads GTM for performance and uses a nonce-free policy, so this is a trade-off, not a bug, there.
 
 3. **Pushing GA4-named events but configuring GTM triggers with legacy snake_case names** (or vice versa). After "Custom Event" renaming there's a coverage gap. **Fix:** match GTM trigger filters to whatever the storefront actually pushes today; do code + GTM in one coordinated change.
 
@@ -127,13 +127,13 @@ If you're starting fresh on a new Hydrogen storefront:
 
 1. **`<ShopifyScripts>` first in the root `<head>`**, route trackers publishing `PAGE_VIEWED` / `PRODUCT_VIEWED` / `COLLECTION_VIEWED` / `SEARCH_VIEWED` / `CART_VIEWED`, and `useCartAnalytics()` inside `CartProvider`. Map bus events to `dataLayer` in a `<CustomAnalytics />` component that registers a destination with `window.Shopify.analytics.addDestination()`. (See [`architecture.md`](./references/architecture.md))
 2. **Inline `<head>` Consent Mode v2 default-deny block + dataLayer + gtm.start marker.**
-3. **`gtm.js` external script with nonce, async, in `<head>` after the inline block.**
+3. **`gtm.js` external script, async, in `<head>` after the inline block** (with the nonce in nonce mode).
 4. **`trackEvent()` helper** that pushes dataLayer + `sendBeacon('/api/track')` with shared `event_id`.
 5. **`/api/track` server endpoint** that validates the payload, hashes PII server-side, fans out to GA4 MP + Meta CAPI + Google Ads forwarders.
 6. **Shopify `orders/create` webhook** that maps the order to a `purchase` event with `event_id = "purchase_" + orderId` (deterministic for retries).
 7. **Shopify "Google & YouTube" sales channel + Customer Events Pixel** for checkout-side events (Meta Pixel events, anything that needs to fire inside Shopify checkout where your GTM can't reach).
 8. **GTM container** with one GA4 Event tag per dataLayer event, plus Meta Pixel + TikTok + Google Ads conversion tags as needed.
-9. **CSP** updated to allow all vendor domains in `script-src`, `connect-src`, `img-src`. Use `strict-dynamic` + nonce.
+9. **CSP** from `createContentSecurityPolicy()` (`@shopify/hydrogen` 2026.10.3) with every vendor domain in `script-src`, `connect-src`, `img-src`. Pilot's default is `nonce: false` + `'unsafe-inline'` (keeps step 10 possible); nonce + `strict-dynamic` is stricter but makes documents uncacheable.
 10. **Oxygen full-page cache** opted in for anonymous documents via `Oxygen-Cache-Control: public, max-age=N, ...` + `Vary` in `entry.server.tsx`. Keep cart and customer data out of loaders so the documents carry no `Set-Cookie`.
 
 ---
@@ -146,8 +146,8 @@ When working on a Hydrogen tracking implementation in this skill's scope:
 - **Client helper at `app/utils/track-client.ts`** (exports `trackEvent`, consent listener, attribution capture).
 - **Route trackers at `app/components/root/analytics-views.tsx`** (publish view events to `window.Shopify.analytics`; `useCartAnalytics()` for cart events).
 - **dataLayer bridge at `app/components/root/custom-analytics.tsx`** (a bus destination registered with `addDestination()`, so delivery follows Customer Privacy consent).
-- **Inline Consent Mode + GTM bootstrap in `app/root.tsx` `<head>`**, with nonce.
-- **CSP config at `app/weaverse/csp.ts`** (Weaverse projects), passed to the local `createContentSecurityPolicy()` port in `app/utils/csp.ts` from `entry.server.tsx` (Hydrogen 2026.10 no longer ships the helper).
+- **Inline Consent Mode + GTM bootstrap in `app/root.tsx` `<head>`** (nonced in nonce mode).
+- **CSP directives at `app/weaverse/csp.ts`** (`getCspDirectives(request, checkoutDomain)` in Weaverse projects), passed as `directives` to Hydrogen's `createContentSecurityPolicy()` in `entry.server.tsx`. Don't port a local `app/utils/csp.ts`: 2026.10.3 ships the helper again.
 - **Per-vendor forwarder modules at `app/.server/tracking/forwarders/{ga4,meta-capi,google-ads}.ts`** — each returns `{forwarder, ok, skipped?, reason?}` so the audit log can show why an event was dropped.
 
 When a question is broader than a single vendor, prefer the reference doc that addresses the architectural layer rather than one vendor's docs.

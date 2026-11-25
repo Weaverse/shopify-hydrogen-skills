@@ -4,6 +4,8 @@ This upgrade moves a Weaverse Hydrogen theme (Pilot and themes forked from it) f
 
 Pilot made this move in [Weaverse/pilot#209](https://github.com/Weaverse/pilot/pull/209), released as [v2026.11.7](https://github.com/Weaverse/pilot/releases/tag/v2026.11.7). The contract and its decisions are in [`.weaverse/specs/2026-10-29-hydrogen-2026-10-cut-over.md`](https://github.com/Weaverse/pilot/blob/main/.weaverse/specs/2026-10-29-hydrogen-2026-10-cut-over.md). For a theme forked from Pilot, the fastest path is usually to take Pilot `v2026.11.7` and re-apply your customizations; this guide lists what changed so you can do either.
 
+> **Then go to 2026.10.3.** This guide describes 2026.10.2 as Pilot shipped it. 2026.10.3 brings Hydrogen's CSP helpers back (Pilot's `app/utils/csp.ts` port and `useNonce` are gone), replaces the fixed request `i18n` with `defineShopifyI18n` and `storefront.locale`, and renames `createShopifyRouteTemplates`. Finish with [2026.10.2 → 2026.10.3](./upgrade-2026.10.2-to-2026.10.3.md), or target `^2026.10.3` from the start and apply both guides together.
+
 ----
 
 ## Summary of changes
@@ -153,7 +155,7 @@ const weaverse = new WeaverseClient({
 From `@weaverse/hydrogen` 6.1.0, pass the market as `locale` (`{ language, country, pathPrefix }`) when Shopify's provider language differs from the locale Weaverse keys translations by (for example `ZH_TW` for a Traditional Chinese Hong Kong market). Pilot passes `locale: resolveRequestLocale(request)` and keeps the provider language on the storefront client.
 
 ### Routes Hydrogen now owns (delete their route files)
-`/api/cart`, `/api/predictive-search`, the Storefront API proxy (`/api/{version}/graphql.json`), and `/account/login`, `/account/authorize`, `/account/logout`. Pilot deleted `routes/api/cart.ts`, `routes/api/predictive-search.ts`, `routes/api/graphql.json.ts` and `routes/account/auth/*`.
+`/api/cart`, `/api/predictive-search`, the Storefront API proxy (`/api/{version}/graphql.json`), and `/account/login`, `/account/authorize`, `/account/logout`. `handleShopifyRoutes` also answers `/checkout`, cart and `/buy` permalinks, the AJAX cart (`/cart.js`, ...), `/.well-known/ucp`, `/api/mcp` and `/api/ucp/mcp`; don't add routes for those either, and add the agent and checkout paths to `robots.txt`. Pilot deleted `routes/api/cart.ts`, `routes/api/predictive-search.ts`, `routes/api/graphql.json.ts` and `routes/account/auth/*`.
 
 ----
 
@@ -203,7 +205,7 @@ Rules:
 | `Pagination`, `getPaginationVariables` | `app/components/pagination.tsx`, `app/utils/pagination.ts` |
 | `getSeoMeta`, `SeoConfig` | `app/utils/seo-meta.ts` |
 | Sitemap helpers | `app/.server/sitemap.ts`, `app/routes/seo/*` |
-| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` | `app/utils/csp.ts` |
+| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` | `app/utils/csp.ts` on 2026.10.2; on 2026.10.3, Hydrogen's own `createContentSecurityPolicy` (see [2026.10.2 → 2026.10.3](./upgrade-2026.10.2-to-2026.10.3.md#step-2-content-security-policy)) |
 | `getSelectedProductOptions` | `@weaverse/hydrogen/react-router` (same signature, filters Studio params) |
 
 ----
@@ -243,7 +245,7 @@ Cart permalinks: Hydrogen answers `/cart/<variant>:<qty>` with Shopify's permali
 
 ## Step 10: Analytics
 
-- `app/root.tsx`: `<ShopifyScripts>` from `@shopify/hydrogen/react` in the head, with `nonce`, `shop`, `i18n`, `consent`, `routes` and `navigate`. It replaces `Analytics.Provider`.
+- `app/root.tsx`: `<ShopifyScripts>` from `@shopify/hydrogen/react` in the head, with `shop`, `i18n`, `consent`, `routes` and `navigate` (and `nonce` under a nonce CSP). It replaces `Analytics.Provider`, and also loads Standard Actions: configure `window.Shopify.actions.openCart` to open the cart drawer.
 - `app/components/root/analytics-views.tsx`: page, product, collection, search and cart-viewed trackers, and `useCartAnalytics`.
 - `app/components/root/custom-analytics.tsx`: the GTM `dataLayer` mapping becomes an analytics-bus destination, so its pushes follow Customer Privacy consent. The lazy GTM loader stays.
 
@@ -313,7 +315,8 @@ On `npm run preview` (and an Oxygen preview deployment):
 
 - [Weaverse/pilot#209](https://github.com/Weaverse/pilot/pull/209) — the cut-over PR
 - [`.weaverse/specs/2026-10-29-hydrogen-2026-10-cut-over.md`](https://github.com/Weaverse/pilot/blob/main/.weaverse/specs/2026-10-29-hydrogen-2026-10-cut-over.md) — scope, acceptance and decisions
-- Hydrogen's migration skill: `node_modules/@shopify/hydrogen/skills/migrate-to-hydrogen-2026-10/SKILL.md`, and the other packaged skills in `node_modules/@shopify/hydrogen/skills/`
+- Hydrogen's migration skill: `node_modules/@shopify/hydrogen/skills/migrate-to-hydrogen-2026-10/SKILL.md`, and the other packaged skills in `node_modules/@shopify/hydrogen/skills/` (copy them into the project with `npx @shopify/hydrogen skills sync`)
+- [Shopify's Hydrogen production checklist](https://shopify.dev/docs/storefronts/hydrogen/production-checklist)
 - [Weaverse/weaverse#545](https://github.com/Weaverse/weaverse/issues/545) — `@weaverse/hydrogen` 6.0
 - [Weaverse v6 & Hydrogen 2026.10 migration guide](https://docs.weaverse.io/migration-advanced/v6-migration) — the same migration with before/after samples
 - [Hydrogen Release Notes](https://hydrogen.shopify.dev/releases)

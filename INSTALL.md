@@ -167,6 +167,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/hydrogen-cookbooks/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-upgrades/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-hydrogen/SKILL.md
+- {SKILLS_DESTINATION}/weaverse-nextjs/SKILL.md
 - {SKILLS_DESTINATION}/theme-update/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-integration/SKILL.md
 - {SKILLS_DESTINATION}/cloning-websites-to-weaverse/SKILL.md
@@ -215,6 +216,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/hydrogen-cookbooks/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-upgrades/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-hydrogen/SKILL.md
+- {SKILLS_DESTINATION}/weaverse-nextjs/SKILL.md
 - {SKILLS_DESTINATION}/theme-update/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-integration/SKILL.md
 - {SKILLS_DESTINATION}/cloning-websites-to-weaverse/SKILL.md
@@ -254,6 +256,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, refer to:
 - ./skills/hydrogen-cookbooks/SKILL.md
 - ./skills/hydrogen-upgrades/SKILL.md
 - ./skills/weaverse-hydrogen/SKILL.md
+- ./skills/weaverse-nextjs/SKILL.md
 - ./skills/theme-update/SKILL.md
 - ./skills/weaverse-integration/SKILL.md
 - ./skills/cloning-websites-to-weaverse/SKILL.md
@@ -295,6 +298,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/hydrogen-cookbooks/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-upgrades/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-hydrogen/SKILL.md
+- {SKILLS_DESTINATION}/weaverse-nextjs/SKILL.md
 - {SKILLS_DESTINATION}/theme-update/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-integration/SKILL.md
 - {SKILLS_DESTINATION}/cloning-websites-to-weaverse/SKILL.md
@@ -338,6 +342,7 @@ Before working on any Shopify Hydrogen or Weaverse-related task, read:
 - {SKILLS_DESTINATION}/hydrogen-cookbooks/SKILL.md
 - {SKILLS_DESTINATION}/hydrogen-upgrades/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-hydrogen/SKILL.md
+- {SKILLS_DESTINATION}/weaverse-nextjs/SKILL.md
 - {SKILLS_DESTINATION}/theme-update/SKILL.md
 - {SKILLS_DESTINATION}/weaverse-integration/SKILL.md
 - {SKILLS_DESTINATION}/cloning-websites-to-weaverse/SKILL.md

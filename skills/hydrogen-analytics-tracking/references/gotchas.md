@@ -85,7 +85,7 @@ const variant = selectedVariant ?? product.selectedOrFirstAvailableVariant;
 
 **Cause:** GTM is injected after hydration (classic Hydrogen's `<Script waitForHydration>`, a `requestIdleCallback` defer, or an intent-based lazy loader like Pilot's `CustomAnalytics`). The `<script>` tag is added AFTER React hydrates, so Tag Assistant's initial HTML scan sees nothing.
 
-**Fix:** Load GTM as a regular `<script async nonce={nonce}>` in `<head>` instead (a deliberate performance trade-off if you lazy-load it today). See [`gtm-meta-implementation.md`](./gtm-meta-implementation.md) §1. Alternative: verify via GTM Preview's "Connected" mode (which uses runtime postMessage, doesn't care when the script loaded).
+**Fix:** Load GTM as a regular `<script async>` in `<head>` instead (add `nonce={nonce}` if the store runs a nonce CSP) (a deliberate performance trade-off if you lazy-load it today). See [`gtm-meta-implementation.md`](./gtm-meta-implementation.md) §1. Alternative: verify via GTM Preview's "Connected" mode (which uses runtime postMessage, doesn't care when the script loaded).
 
 ## "Custom Events Pixel for Meta double-fires Purchase"
 
@@ -153,9 +153,9 @@ For **Purchase** specifically: do NOT just skip it. Purchase is the most attribu
 
 ## "GTM tag fires inline scripts, CSP violations spam the console"
 
-**Cause:** Custom HTML tags in GTM inject `<script>` blocks at runtime without the page nonce. Per CSP3 spec, when `nonce-XXX` is present in `script-src`, `'unsafe-inline'` is IGNORED — so un-nonced inline scripts get blocked.
+**Cause:** Custom HTML tags in GTM inject `<script>` blocks at runtime without the page nonce. Per CSP3 spec, when `nonce-XXX` (or a hash) is present in `script-src`, `'unsafe-inline'` is IGNORED — so un-nonced inline scripts get blocked. With Pilot's nonce-free policy (`nonce: false` + `'unsafe-inline'`) this doesn't happen; it starts when a store switches to a nonce CSP or adds `getShopifyScriptHashes()`.
 
-**Fix:** Add `'strict-dynamic'` to `script-src`. This tells the browser to trust whatever the nonced root scripts (gtm.js, your inline `<head>` bootstrap) dynamically load — including Custom HTML tag inline scripts. See [`csp-for-tracking.md`](./csp-for-tracking.md).
+**Fix:** In nonce mode, add `'strict-dynamic'` to `script-src`. This tells the browser to trust whatever the nonced root scripts (gtm.js, your inline `<head>` bootstrap) dynamically load — including Custom HTML tag inline scripts. In nonce-free mode, keep `'unsafe-inline'` and don't add hashes. See [`csp-for-tracking.md`](./csp-for-tracking.md).
 
 ## "GA4 Measurement Protocol events skip with reason: no_client_id"
 
@@ -207,8 +207,8 @@ The symmetric trap: loading only `cdn.shopify.com/storefront/web-components.js` 
 
 ```tsx
 <head>
-  <script type="module" src="https://cdn.shopify.com/storefront/web-components.js" defer nonce={nonce} />
-  <script type="module" src="https://cdn.shopify.com/storefront/web-components/account.js" defer nonce={nonce} />
+  <script type="module" src="https://cdn.shopify.com/storefront/web-components.js" defer />
+  <script type="module" src="https://cdn.shopify.com/storefront/web-components/account.js" defer />
 </head>
 ```
 
@@ -282,7 +282,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
     variables: {
       input: {
         lines: linesMap,
-        buyerIdentity: { countryCode: storefront.i18n.country },
+        buyerIdentity: { countryCode: storefront.locale.country },
         ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
       },
     },

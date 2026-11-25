@@ -38,7 +38,9 @@ NEVER USE 'react-router-dom' imports!
 | `@shopify/remix-oxygen` (`LoaderFunctionArgs`, `AppLoadContext`, `redirect`, `data`, `createRequestHandler`) | `react-router`. The package is gone. |
 | `@shopify/hydrogen-react` and classic `@shopify/hydrogen` components (`ShopPayButton`, `CartProvider`, `ProductProvider`) | `@shopify/hydrogen/react` (`ShopPayButton`, `ShopifyScripts`, `createCartComponents`, `createProductComponents`). Pilot wraps the last two in `app/components/cart/cart-store.ts` and `app/components/product/product-form.tsx`. |
 | `Image`, `Money`, `ExternalVideo`, `ModelViewer`, `Pagination`, `getSeoMeta` from `@shopify/hydrogen` | Pilot's local ports: `~/components/image`, `~/components/money`, `~/components/product-media/*`, `~/components/pagination`, `~/utils/seo-meta` |
-| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` from `@shopify/hydrogen` | `~/utils/csp` |
+| Classic `createContentSecurityPolicy(directives)`, `NonceProvider`, `useNonce` from `@shopify/hydrogen` | `createContentSecurityPolicy({ shop, nonce, directives })` from `@shopify/hydrogen` 2026.10.3 (directives under `directives`, no React helpers). Pilot uses `nonce: false` with `'unsafe-inline'` scripts in `entry.server.tsx`. |
+| `createShopifyRouteTemplates` | `defineShopifyRouteTemplates` (2026.10.3 rename; the old name is a deprecated alias) |
+| A fixed `{ language, country, pathPrefix }` as `i18n`, `storefront.i18n`, `I18nConfig` | A module-scope `defineShopifyI18n()` definition as `i18n`; read `storefront.locale` |
 | `Analytics.Provider`, `Analytics.*View`, `useAnalytics` | `ShopifyScripts` in `app/root.tsx` and the trackers in `~/components/root/analytics-views` |
 | `CartForm`, `useOptimisticCart`, `context.cart` | The cart store: `useCart`, `useCartForm`, `useCartActions` from `~/components/cart/cart-store` |
 | `useOptimisticVariant`, `getAdjacentAndFirstAvailableVariants`, `getProductOptions` | `useProduct`, `useProductForm`, `useSelectedVariant` from `~/components/product/product-form` |
@@ -71,12 +73,14 @@ import { createSchema, type WeaverseComponentProps } from '@weaverse/hydrogen/re
 
 1. Reject malformed requests (a `GET`/`HEAD` with a body, `//` in the path).
 2. `createAppContext()` (`app/.server/context.ts`) builds the per-request context: the session, the storefront client (private when Oxygen injects `PRIVATE_STOREFRONT_API_TOKEN`, public otherwise), `customerAccount` and the `WeaverseClient`. Unprefixed `/api/*` requests take their market from the `Referer`.
-3. `handleShopifyRoutes()` answers the paths Hydrogen owns: `/api/cart` (plus Pilot's `/api/cart/buyer-identity` and `/api/cart/gift-cards`), `/api/predictive-search`, `/api/account/token`, the Storefront API proxy, `/checkout`, Shop Pay permalinks and Customer Account OAuth (`/account/login|authorize|refresh|logout`). These paths must not get route files.
+3. `handleShopifyRoutes()` answers the paths Hydrogen owns: `/api/cart` (plus Pilot's `/api/cart/buyer-identity` and `/api/cart/gift-cards`), `/api/predictive-search`, `/api/account/token`, the Storefront API proxy, `/checkout`, cart and `/buy` permalinks, the AJAX cart (`/cart.js`, ...), the agent endpoints (`/.well-known/ucp`, `/api/mcp`, `/api/ucp/mcp`), `?variant=` links and Customer Account OAuth (`/account/login|authorize|refresh|logout`). These paths must not get route files.
 4. Otherwise the context is copied onto React Router's `RouterContextProvider` and React Router renders the app. Loaders read `context.storefront`, `context.weaverse`, `context.customerAccount`, `context.session` and `context.env`, typed in `env.d.ts`.
 5. The session is committed and `requestContext.applyResponseHeaders()` adds Shopify's response headers.
 6. On a 404, `handleShopifyRedirects()` (through `marketAwareRedirect`) looks the path up in Shopify's URL redirects for the market.
 
 To add a value to `context`, return it from `createAppContext()`; `env.d.ts` derives the context type from it.
+
+Shopify's React Router template and Hydrogen's packaged skills put these phases in a root-route `middleware` export instead (`context.set()` / `context.get()` for the client, `next()` for rendering). In Pilot, apply what they say inside `server.ts`; don't add a second `handleShopifyRoutes()` call in middleware. The phase mapping is in the `shopify-hydrogen` skill, `references/05-storefront-contracts.md`.
 
 ## Development Guidelines
 

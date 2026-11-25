@@ -2,9 +2,9 @@
 
 Concrete code patterns. Adapted from production deployments.
 
-## 1. GTM bootstrap in `<head>` (synchronous + nonced)
+## 1. GTM bootstrap in `<head>` (synchronous, nonced in nonce mode)
 
-`root.tsx` (`nonce` comes from `useNonce()` in `app/utils/csp.ts`, Pilot's port of the helper Hydrogen 2026.10 removed; render these after `<ShopifyScripts>`, which Pilot puts first in the head):
+`root.tsx`, rendered after `<ShopifyScripts>`, which Pilot puts first in the head. `nonce` is `undefined` with Pilot's nonce-free policy (`createContentSecurityPolicy({ nonce: false })` plus `'unsafe-inline'`), so React omits the attribute. A store that switches to a nonce CSP passes `csp.nonce` from `entry.server.tsx` down through an app-owned React context; Hydrogen 2026.10 has no `useNonce()`:
 
 ```tsx
 <head>
@@ -35,9 +35,9 @@ Concrete code patterns. Adapted from production deployments.
     }}
   />
 
-  {/* External gtm.js — async, NONCED. Don't inject it after hydration
-      without the nonce; that breaks strict-dynamic and hides GTM from Tag
-      Assistant scans. */}
+  {/* External gtm.js — async (and nonced in nonce mode). Injecting it
+      after hydration hides GTM from Tag Assistant scans and, under a nonce
+      CSP, breaks strict-dynamic. */}
   {googleGtmID ? (
     <script
       src={`https://www.googletagmanager.com/gtm.js?id=${googleGtmID}`}
@@ -67,7 +67,7 @@ Concrete code patterns. Adapted from production deployments.
 
 If gtm.js loads before the `gtag('consent', 'default', …)` block runs, GTM briefly initialises all tags with no consent state — meaning ad-storage-dependent tags can fire in "granted" mode for the first few milliseconds. Some pixels (Meta in particular) will dispatch a `PageView` with full PII before consent has been collected. That's a compliance violation.
 
-The fix is strict ordering: inline `<script nonce>` block (synchronous, blocks parser briefly but is tiny) → external gtm.js (`async`, runs whenever it lands). Both nonced so CSP `strict-dynamic` trusts them.
+The fix is strict ordering: inline `<script>` block (synchronous, blocks parser briefly but is tiny) → external gtm.js (`async`, runs whenever it lands). Under a nonce CSP, both carry the nonce so `strict-dynamic` trusts them.
 
 ## 2. Hydrogen analytics bus → dataLayer bridge
 
@@ -182,7 +182,7 @@ export function CustomAnalytics() {
 }
 ```
 
-Pilot's own `custom-analytics.tsx` is the minimal version of this: a `gtm` destination that pushes `page_viewed`, `product_viewed`, `collection_viewed`, `cart_updated`, `add_to_cart`, `remove_from_cart` and `search_viewed` to `dataLayer`, plus a GTM loader that waits for user intent (or 8 s) and appends a nonced `gtm.js`.
+Pilot's own `custom-analytics.tsx` is the minimal version of this: a `gtm` destination that pushes `page_viewed`, `product_viewed`, `collection_viewed`, `cart_updated`, `add_to_cart`, `remove_from_cart` and `search_viewed` to `dataLayer`, plus a GTM loader that waits for user intent (or 8 s) and appends `gtm.js`. That works because Pilot's policy allows `'unsafe-inline'` and `*.googletagmanager.com` with no nonce; under a nonce CSP the loader must set `script.nonce` and the policy needs `'strict-dynamic'`.
 
 The bus only publishes events that something publishes. Make sure the routes render the trackers: `<PageView />` and `<CartAnalytics />` (which calls `useCartAnalytics()`) in the root, `<ProductView products={[...]} />` on the product route, `<CollectionView>`, `<SearchView>` and `<CartView>` where they apply (Pilot: `app/components/root/analytics-views.tsx`).
 

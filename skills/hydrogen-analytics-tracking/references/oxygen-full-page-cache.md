@@ -20,7 +20,7 @@ A response is **cacheable** if ALL of these are true:
 6. Response has a `Vary` header.
 7. `Vary` is NOT `*` (Cloudflare's auto-`vary: Accept-Encoding` is fine).
 
-Source: [shopify.dev — Oxygen full-page cache](https://shopify.dev/docs/storefronts/headless/hydrogen/caching/full-page-cache).
+Source: [shopify.dev — Oxygen full-page cache](https://shopify.dev/docs/storefronts/headless/legacy/hydrogen/caching/full-page-cache). The page is in Shopify's Legacy Hydrogen docs; the 2026.10 docs have no full-page cache page yet (the [Oxygen runtime](https://shopify.dev/docs/storefronts/hydrogen/deploy/oxygen/runtime#cache) page covers only the sub-request cache), and the conditions above still hold for Oxygen.
 
 If any of the above fails, the response includes the header `oxygen-full-page-cache: uncacheable` and the next request is also served fresh (no caching).
 
@@ -73,9 +73,9 @@ On Hydrogen 2026.10 don't strip cookies by hand. `server.ts` owns the response b
 // app/entry.server.tsx (Pilot, trimmed)
 import { getFullPageCacheControl } from "~/utils/full-page-cache";
 
-// … render with the nonce, then:
+// … build `csp` with createContentSecurityPolicy({ nonce: false, ... }), render, then:
 responseHeaders.set("Content-Type", "text/html");
-responseHeaders.set("Content-Security-Policy-Report-Only", header);
+responseHeaders.set("Content-Security-Policy-Report-Only", csp.header);
 
 const fullPageCacheControl = getFullPageCacheControl(
   request,
@@ -147,7 +147,7 @@ Audit each cacheable route's loader chain for:
 - **Customer-specific data inlined in the HTML** — customer name, "Welcome back, X", per-customer pricing, etc. If you need any of this, fetch it post-hydration via a client-side fetch (won't be cached) and render after.
 - **CSRF tokens** — these MUST be per-request, can't be cached. If your forms use CSRF, that token comes via a separate non-cached endpoint, never inlined in cacheable HTML.
 
-CSP nonces are OK to cache — they're per-RESPONSE (not per-user), and the inline scripts referring to the nonce are part of the same response, so cached nonce + cached inline scripts stay consistent.
+**CSP nonces don't belong in cached HTML.** A nonce is only a protection while it's unpredictable; a cached document hands the same nonce to every visitor. Hydrogen 2026.10.3 enforces this: in nonce mode, `csp.applyResponseHeaders()` marks the document `private, no-store`. Pilot builds its policy with `createContentSecurityPolicy({ nonce: false, ... })` and `'unsafe-inline'` scripts so documents stay cacheable (see [`csp-for-tracking.md`](./csp-for-tracking.md)). Pick one: full-page cache, or a nonce CSP.
 
 ## When NOT to enable FPC
 

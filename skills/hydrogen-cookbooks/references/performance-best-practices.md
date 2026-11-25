@@ -142,7 +142,7 @@ useEffect(() => {
   let init = () => {
     let script = document.createElement("script");
     script.async = true;
-    script.nonce = nonce;
+    if (nonce) script.nonce = nonce; // only under a nonce CSP
     script.src = `https://www.googletagmanager.com/gtm.js?id=${id}`;
     document.head.appendChild(script);
   };
@@ -154,7 +154,7 @@ useEffect(() => {
 }, [id, nonce]);
 ```
 
-Set `script.nonce` when creating scripts dynamically for CSP compliance. Pilot's GTM loader (`app/components/root/custom-analytics.tsx`) goes further: it queues `dataLayer` events immediately but loads `gtm.js` on the first interaction, or after 8 seconds.
+Under a nonce CSP, set `script.nonce` when creating scripts dynamically (and allow them with `'strict-dynamic'`). Pilot's policy is nonce-free (`createContentSecurityPolicy({ nonce: false })` with `'unsafe-inline'` and the GTM hosts), so its loader sets no nonce. Pilot's GTM loader (`app/components/root/custom-analytics.tsx`) goes further: it queues `dataLayer` events immediately but loads `gtm.js` on the first interaction, or after 8 seconds.
 
 Common mistakes with GTM:
 
@@ -401,7 +401,7 @@ Every `storefront.graphql()` call needs a `cache` option:
 
 **shop-js (~196KB):** Loaded by the Shop Pay button (`ShopPayButton` from `@shopify/hydrogen/react`, rendered by `app/components/product/shop-pay-button.tsx`). If Shop Pay is not used, turn off **Show Shop Pay button** in the product page's Buy buttons block.
 
-**CSP Report-Only:** CSP is currently in Report-Only mode in `entry.server.tsx`. Switch to `Content-Security-Policy` when ready for enforcement.
+**CSP Report-Only:** CSP is currently in Report-Only mode in `entry.server.tsx`. Switch to `csp.applyResponseHeaders(responseHeaders)` (an enforcing `Content-Security-Policy`) when ready. Keep `nonce: false`: a nonce policy marks documents `private, no-store` and turns off Oxygen's full-page cache.
 
 **Weaverse component registry:** All registered components are statically imported. Weaverse needs the `schema` property synchronously to match section types, so full lazy-loading isn't possible at the framework level. Use Vite's `manualChunks` (see Code Splitting section above) to split the heavy dependencies these components pull in.
 

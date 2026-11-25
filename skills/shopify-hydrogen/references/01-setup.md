@@ -12,6 +12,8 @@ Hydrogen 2026.10 has no `createHydrogenContext()` and no Hydrogen `createRequest
 4. Commit the session and apply Shopify's response headers.
 5. On a 404, look the path up in Shopify's URL redirects with `handleShopifyRedirects()`.
 
+Shopify's React Router template runs the same phases in a root-route `middleware` export. Pilot keeps them in `server.ts`; the phase-by-phase mapping is in [05-storefront-contracts.md](05-storefront-contracts.md#serverts-vs-shopifys-root-middleware-template). Before a deploy, run the [production checklist](05-storefront-contracts.md#production-checklist).
+
 > Upgrading from classic Hydrogen (2026.4 and earlier)? See the `hydrogen-upgrades` skill, `upgrade-2026.4.7-to-2026.10.2.md`.
 
 ## Env Vars
@@ -113,18 +115,20 @@ Notes:
 
 - `handleShopifyRoutes` decides synchronously: a `Promise<Response>` for a path a handler owns, otherwise `null`.
 - Handlers match in order. Pilot's `POST /api/cart` syncs the cart's market and customer, then delegates to `cartHandlers`, so it is listed first.
-- Hydrogen-owned paths are exact and never carry a market prefix. Pilot resolves their market from the same-origin `Referer` (and from `return_to` for `/account/login`).
+- Hydrogen-owned paths are exact and never carry a market prefix (registered handlers also match with the prefix stripped). Pilot resolves their market from the same-origin `Referer` (and from `return_to` for `/account/login`).
+- Besides the registered handlers, `handleShopifyRoutes` answers the Storefront API proxy, `/checkout`, cart and `/buy` permalinks, the AJAX cart, `/.well-known/ucp`, `/api/mcp` and `/api/ucp/mcp`. The full list is in [05-storefront-contracts.md](05-storefront-contracts.md#routes-hydrogen-owns).
 - Pilot's real `server.ts` also rejects a `GET`/`HEAD` with a body, collapses `//` in paths, rewrites `http:` to `https:` behind a TLS-terminating proxy (`x-forwarded-proto`), makes the redirect lookup market-aware, and routes cart permalinks without a `payment` param to its own `/cart/:lines` route.
 
 ## Route Templates
 
 ```ts
 // app/utils/route-templates.ts
-import { createShopifyRouteTemplates } from "@shopify/hydrogen";
+import { defineShopifyRouteTemplates } from "@shopify/hydrogen";
 
 // Maps Shopify resources to your routes: `?variant=` product links, URL
 // redirects and `ShopifyScripts` links. Never include a market prefix.
-export const routeTemplates = createShopifyRouteTemplates({
+// (`createShopifyRouteTemplates` is the deprecated alias.)
+export const routeTemplates = defineShopifyRouteTemplates({
   productInCollection: "/products/:productHandle",
 });
 ```
@@ -166,6 +170,28 @@ declare module "react-router" {
 }
 ```
 
+## Locale Definition
+
+`createShopifyRequestContext` takes a module-scope `defineShopifyI18n` definition as `i18n` (2026.10.3). Passing a fixed `{ language, country, pathPrefix }` instead is deprecated.
+
+```ts
+// app/utils/locale.ts
+import { defineShopifyI18n } from "@shopify/hydrogen";
+
+export const i18n = defineShopifyI18n({
+  defaultLocale: { language: "EN", country: "US" }, // served unprefixed
+  routing: {
+    type: "pathname",
+    locales: [
+      { language: "FR", country: "CA" }, // → /fr-ca
+      { language: "ZH_TW", country: "TW", pathSegment: "zh-tw" }, // pin a prefix
+    ],
+  },
+});
+```
+
+Pilot builds the list from its `SUPPORTED_LOCALES` (Shopify's provider language, the existing prefix as `pathSegment`); the `hydrogen-markets-localization` skill covers the full market model.
+
 ## The Storefront Client
 
 ```ts
@@ -178,6 +204,7 @@ import {
   type PublicStorefrontClient,
   type RequestScopedPrivateStorefrontClient,
 } from "@shopify/hydrogen";
+import { i18n, providerLocaleFor } from "~/utils/locale";
 
 // The bare client types drop `cache` from `graphql()` options; carry it.
 type StorefrontCallOptions = { cache?: CachingStrategy };
@@ -185,7 +212,7 @@ type StorefrontCallOptions = { cache?: CachingStrategy };
 export type Storefront = (
   | RequestScopedPrivateStorefrontClient<StorefrontCallOptions>
   | PublicStorefrontClient<StorefrontCallOptions>
-) & { i18n: StorefrontI18n }; // StorefrontI18n: your market shape plus `pathPrefix`
+) & { locale: StorefrontLocale }; // StorefrontLocale: your market shape plus `pathPrefix`
 
 export function createRequestStorefront({
   request,
@@ -198,7 +225,10 @@ export function createRequestStorefront({
   cache: CacheInstance;
   waitUntil: ExecutionContext["waitUntil"];
 }): Storefront {
-  const i18n = getRequestI18n(request); // your market resolver: { country, language, pathPrefix, ... }
+  // Pilot resolves the market itself (`.data` suffix, `Referer` for unprefixed
+  // Hydrogen endpoints) and passes it as `locale`. Without such needs, omit
+  // `locale` and Hydrogen matches it from the URL with `i18n`.
+  const locale = providerLocaleFor(resolveRequestLocale(request));
   const buyerIp = getBuyerIp(request.headers); // `oxygen-buyer-ip`, then proxy headers
   const config = {
     storeDomain: env.PUBLIC_STORE_DOMAIN,
@@ -212,20 +242,20 @@ export function createRequestStorefront({
   if (env.PRIVATE_STOREFRONT_API_TOKEN && buyerIp) {
     return createStorefrontClient({
       type: "private",
-      requestContext: createShopifyRequestContext({ request, i18n, buyerIp }),
+      requestContext: createShopifyRequestContext({ request, i18n, locale, buyerIp }),
       config: { ...config, privateStorefrontToken: env.PRIVATE_STOREFRONT_API_TOKEN },
     }) as Storefront;
   }
 
   return createStorefrontClient({
     type: "public",
-    requestContext: createShopifyRequestContext({ request, i18n }),
+    requestContext: createShopifyRequestContext({ request, i18n, locale }),
     config: { ...config, publicStorefrontToken: env.PUBLIC_STOREFRONT_API_TOKEN || undefined },
   }) as Storefront;
 }
 ```
 
-The client exposes `storefront.graphql(doc, { variables, cache })`, `storefront.i18n` and `storefront.requestContext`. See Pilot's `app/.server/storefront.ts` for the market resolver and buyer-IP lookup.
+The client exposes `storefront.graphql(doc, { variables, cache })`, `storefront.locale` (the resolved market; `storefront.i18n` is its deprecated alias) and `storefront.requestContext`. See Pilot's `app/.server/storefront.ts` for the market resolver and buyer-IP lookup.
 
 ## Querying in Routes
 

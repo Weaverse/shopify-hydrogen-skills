@@ -171,8 +171,8 @@ Hydrogen works on Shopify development stores. There is no Headless-app fallback:
    ```
 
 > **Real limitation, stated once:** public Oxygen / shareable *production* environments still depend on the store's Shopify plan. Local linking and credential setup do **not** — they work on development stores through the Hydrogen app.
-> Environment docs: [https://shopify.dev/docs/storefronts/headless/hydrogen/environments](https://shopify.dev/docs/storefronts/headless/hydrogen/environments)
-> Getting started: [https://shopify.dev/docs/storefronts/headless/hydrogen/getting-started](https://shopify.dev/docs/storefronts/headless/hydrogen/getting-started)
+> Environment docs: [https://shopify.dev/docs/storefronts/hydrogen/deploy/oxygen/environments](https://shopify.dev/docs/storefronts/hydrogen/deploy/oxygen/environments)
+> Getting started: [https://shopify.dev/docs/storefronts/hydrogen/getting-started](https://shopify.dev/docs/storefronts/hydrogen/getting-started)
 
 If `env pull` is unavailable or fails, have the user copy variables from **Shopify Admin → Hydrogen app → Storefront settings → Environments and variables**; you write the minimum render vars into `.env` and verify as above.
 
@@ -285,10 +285,16 @@ End by installing the complete `shopify-hydrogen-skills` pack — all skills, al
 npx skills@latest add Weaverse/shopify-hydrogen-skills --all
 ```
 
+Also copy Hydrogen's own version-matched skills into the project (Hydrogen 2026.10 themes; Pilot already commits them, so this only refreshes them when the installed `@shopify/hydrogen` is newer):
+
+```bash
+npx @shopify/hydrogen skills sync   # writes .agents/skills/ and .claude/skills/
+```
+
 Then inspect what it generated:
 
 ```bash
-git status --short          # review what the pack install generated
+git status --short          # review what the pack install and the sync generated
 ```
 
 **Publishing those changes is a separate external effect — ask again.** Show the user the file list from `git status` and what the commit message would be, then wait for approval before running anything below:

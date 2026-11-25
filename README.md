@@ -4,7 +4,9 @@ Agent skills for building, maintaining, and upgrading Shopify Hydrogen storefron
 
 > **Why skills, not docs?** Skills are concise, agent-optimized knowledge that your coding agent loads before working on a task — structured for LLMs, not humans. Pair them with live doc search for the best results.
 
-> **Versions.** The skills target **Hydrogen 2026.10** (`@shopify/hydrogen` as a request-handler library), React Router 7 and **`@weaverse/hydrogen` 6** (imports from `@weaverse/hydrogen/react-router`), with [Pilot](https://github.com/Weaverse/pilot) `main` as the reference implementation. Classic Hydrogen (2026.4 and earlier) and `@weaverse/hydrogen` 5 appear only in the upgrade and migration guides.
+> **Versions.** The skills target **Hydrogen 2026.10** (`@shopify/hydrogen` 2026.10.3 as a request-handler library), React Router 7 and **`@weaverse/hydrogen` 6** (imports from `@weaverse/hydrogen/react-router`), with [Pilot](https://github.com/Weaverse/pilot) `main` as the reference implementation. Next.js storefronts (`@weaverse/hydrogen/next`) follow [Forward](https://github.com/Weaverse/forward) `main`. Classic Hydrogen (2026.4 and earlier) and `@weaverse/hydrogen` 5 appear only in the upgrade and migration guides.
+
+> **Use them with Hydrogen's own skills.** `@shopify/hydrogen` ships version-matched skills; copy them into your storefront with `npx @shopify/hydrogen skills sync` and re-run it after every Hydrogen upgrade. These skills add the Weaverse, Pilot and Forward specifics on top.
 
 ## Quick Install
 
@@ -66,7 +68,8 @@ For older Claude Code versions and manual per-agent setup, see [INSTALL.md](INST
 | Skill | What the agent learns | When to load |
 |-------|----------------------|--------------|
 | [`setup-weaverse-project`](./skills/setup-weaverse-project/SKILL.md) | Fast new-project onboarding — CLI-first scaffold, demo-store boot before credentials, generated `SESSION_SECRET`, GitHub repo, Builder preview connection | Starting a brand-new Weaverse Hydrogen storefront or running a theme locally for the first time |
-| [`shopify-hydrogen`](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen 2026.10 APIs — `server.ts` request lifecycle, `handleShopifyRoutes`, `storefront.graphql(gql())` with explicit cache, cart store, Customer Account handlers | Working with `@shopify/hydrogen` APIs |
+| [`shopify-hydrogen`](./skills/shopify-hydrogen/SKILL.md) | Core Hydrogen 2026.10 APIs — `server.ts` request lifecycle vs Shopify's root middleware, `handleShopifyRoutes` (UCP, MCP, `/buy`, AJAX cart), `defineShopifyI18n`, `storefront.graphql(gql())` with explicit cache, cart store, `ShopifyScripts` + Standard Actions (`openCart`), `createContentSecurityPolicy`, Customer Account handlers, production checklist | Working with `@shopify/hydrogen` APIs |
+| [`weaverse-nextjs`](./skills/weaverse-nextjs/SKILL.md) | Weaverse on Next.js App Router — `@weaverse/hydrogen/next`, `handleShopifyRoutes` in `proxy.ts`, redirects after a 404, markets, Next data-cache caching, `ShopifyScripts` + `openCart`, nonce-free CSP, Studio revalidation | Building or maintaining a Next.js storefront with Weaverse (Forward) |
 | [`weaverse-hydrogen`](./skills/weaverse-hydrogen/SKILL.md) | Weaverse components, schemas, loaders, theming, deployment | Any Hydrogen + Weaverse project |
 | [`hydrogen-cookbooks`](./skills/hydrogen-cookbooks/SKILL.md) | Step-by-step guides — bundles, combined listings, 3D models, customer accounts, performance | Building specific features |
 | [`hydrogen-upgrades`](./skills/hydrogen-upgrades/SKILL.md) | Breaking changes and migration steps for Hydrogen framework versions | Upgrading Hydrogen framework |
@@ -137,7 +140,10 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │
 │   ├── shopify-hydrogen/          # Core Hydrogen APIs
 │   │   ├── SKILL.md
-│   │   └── references/            # Setup, caching, cart patterns
+│   │   └── references/            # Setup, caching, cart, SSR, storefront contracts
+│   │
+│   ├── weaverse-nextjs/           # Weaverse on Next.js App Router (Forward)
+│   │   └── SKILL.md
 │   │
 │   ├── weaverse-hydrogen/         # Weaverse CMS integration
 │   │   ├── SKILL.md
@@ -150,7 +156,7 @@ All scripts are **zero-dependency** — Node.js 18+ built-ins only.
 │   │
 │   ├── hydrogen-upgrades/         # Framework version migrations
 │   │   ├── SKILL.md
-│   │   └── references/            # 2024.4.7 → … → 2026.10.2
+│   │   └── references/            # 2024.4.7 → … → 2026.10.3
 │   │
 │   ├── theme-update/              # Pilot theme updater
 │       ├── SKILL.md

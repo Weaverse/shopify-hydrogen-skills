@@ -167,6 +167,16 @@ Pilot keeps `/cart/:lines` permalinks (without a `payment` param), `/discount/:c
 
 `/api/*` handler paths are never market-prefixed. Pilot resolves their market from the same-origin `Referer`.
 
+## Standard Actions (`openCart`)
+
+`ShopifyScripts` loads Shopify's Standard Actions, so apps, scripts and WebMCP agents can call `window.Shopify.actions.updateCart()` and `openCart()`. Hydrogen's cart store configures `updateCart` itself and routes its own changes through it. `openCart()` navigates to `/cart` until the app configures it, so point it at the cart drawer once on the client:
+
+```ts
+window.Shopify?.actions?.openCart?.configure({ handler: async () => openCartDrawer() });
+```
+
+The Standard Actions module can run after your code: retry on `DOMContentLoaded` when `window.Shopify.actions` isn't there yet. To open the drawer for adds that come from apps or agents, listen for `shopify:cart:lines-update` with `event.action === "add"`. Pilot's version is in `app/components/cart/cart-drawer.tsx`; [05-storefront-contracts.md](05-storefront-contracts.md#standard-actions-opencart-updatecart-getcart) has the full contract.
+
 ## Cart Analytics
 
 `useCartAnalytics()` from `@shopify/hydrogen/react` publishes `cart_updated`, `product_added_to_cart` and `product_removed_from_cart` from the cart store to `window.Shopify.analytics`. Render it inside `CartProvider`, after `ShopifyScripts`.
@@ -175,8 +185,10 @@ Pilot keeps `/cart/:lines` permalinks (without a `payment` param), `/discount/:c
 
 Oxygen's full-page cache keys entries by the **full request URL including the
 query string**, plus `Vary`'d headers; the worker is not invoked on hits.
-(shopify.dev/docs/storefronts/headless/hydrogen/caching/full-page-cache,
-Shopify/hydrogen discussion #2513.) Claims that it "matches by path and
+(Shopify's [full-page cache page](https://shopify.dev/docs/storefronts/headless/legacy/hydrogen/caching/full-page-cache),
+which only exists in the Legacy Hydrogen docs; Shopify/hydrogen discussion #2513.
+The 2026.10 [Oxygen runtime](https://shopify.dev/docs/storefronts/hydrogen/deploy/oxygen/runtime#cache)
+page covers only the sub-request cache.) Claims that it "matches by path and
 ignores search params" are wrong — `/search?q=a` vs `?q=b` are distinct
 entries. Query-param diversity costs cache cardinality, never wrong content.
 `Vary: Cookie` makes every cookie string a separate key — it effectively

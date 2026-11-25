@@ -60,7 +60,7 @@ type WeaverseComponentLoaderArgs<T> = {
 |----------|-------|
 | `weaverse.storefront` | The request-scoped Hydrogen 2026.10 Storefront API client |
 | `weaverse.storefront.graphql(doc, { variables, cache })` | Run a `gql()` document; returns `{ data, errors, headers }` |
-| `weaverse.storefront.i18n` | The request's market (`language`, `country`, `pathPrefix`) |
+| `weaverse.storefront.locale` | The request's market (`language`, `country`, `pathPrefix`); `storefront.i18n` is its deprecated alias in `@shopify/hydrogen` 2026.10.3 |
 | `weaverse.customerAccount` | The Customer Account client, when the app passes one to `WeaverseClient` |
 | `weaverse.fetchWithCache()` | Fetch external APIs with caching |
 | `weaverse.env` | Environment variables |
