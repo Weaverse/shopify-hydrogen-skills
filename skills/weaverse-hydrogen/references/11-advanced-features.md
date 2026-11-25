@@ -184,7 +184,7 @@ No special code needed — global sections use the same component system. Change
 
 Weaverse Studio requires specific CSP directives for the live preview to work.
 
-Pilot's `app/weaverse/csp.ts` (`getWeaverseCsp(request, env)`) adds Weaverse's hosts and, in design mode (`?weaverseHost=`), `frameAncestors: ['*']` plus `'unsafe-eval'` for the Studio bridge. Hydrogen 2026.10 removed `createContentSecurityPolicy`, `NonceProvider` and `useNonce`; Pilot ports them to `app/utils/csp.ts` and calls them from `entry.server.tsx`. Both files are shown in [09-deployment.md](09-deployment.md#content-security-policy-csp) and [01-project-structure.md](01-project-structure.md#entryservertsx).
+Pilot's `app/weaverse/csp.ts` (`getCspDirectives(request, checkoutDomain)`) adds the theme's third-party sources and merges `getWeaverseStudioCspDirectives(request)` from `@weaverse/hydrogen/react-router`, which adds the Studio origin (`frameAncestors`, scripts, styles, fonts, images, connections) and, in design mode, `'unsafe-eval'` for the Studio bridge, only for a trusted `weaverseHost`. `entry.server.tsx` passes the result to Hydrogen 2026.10.3's `createContentSecurityPolicy({ nonce: false, shop, directives })`. Both files are shown in [09-deployment.md](09-deployment.md#content-security-policy-csp) and [01-project-structure.md](01-project-structure.md#entryservertsx).
 
 ---
 

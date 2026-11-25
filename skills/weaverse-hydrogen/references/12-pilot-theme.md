@@ -13,17 +13,18 @@ Pilot is the official Weaverse Hydrogen starter theme. It demonstrates best prac
 
 ```
 pilot/
+├── .agents/skills/, .claude/skills/  # Hydrogen's packaged skills (`npx @shopify/hydrogen skills sync`; don't edit)
 ├── server.ts               # Fetch handler: createAppContext → handleShopifyRoutes → React Router
 ├── app/
 │   ├── .server/            # context.ts (WeaverseClient), storefront.ts, cart.ts, customer-account.ts, ...
 │   ├── components/         # Shared UI (Section, Heading, Button, ProductCard, etc.)
 │   ├── graphql/            # gql() fragments (fragments.ts) and queries (queries.ts)
-│   ├── utils/              # cache.ts (CACHE_*), storefront.ts (unwrapStorefront), csp.ts, ...
+│   ├── utils/              # cache.ts (CACHE_*), storefront.ts (unwrapStorefront), locale.ts (defineShopifyI18n), route-templates.ts, ...
 │   ├── sections/           # 100+ registered Weaverse sections
 │   ├── weaverse/
 │   │   ├── components.ts   # All sections registered here
 │   │   ├── schema.server.ts  # Theme-wide settings (colors, fonts, layout)
-│   │   ├── csp.ts          # Weaverse CSP config
+│   │   ├── csp.ts          # Theme + Weaverse Studio CSP directives
 │   │   ├── style.tsx       # GlobalStyle component (CSS variables)
 │   │   └── index.tsx       # WeaverseContent wrapper
 │   ├── routes.ts           # Route config (:locale? prefix, market guard layouts)

@@ -7,6 +7,8 @@ description: "Build Shopify Hydrogen 2026.10 storefronts with Weaverse (@weavers
 
 > Build Shopify Hydrogen storefronts with Weaverse visual page builder.
 > Docs: https://docs.weaverse.io | GitHub: https://github.com/Weaverse
+>
+> This skill covers React Router themes (Pilot, `@weaverse/hydrogen/react-router`). For a Next.js App Router storefront (`@weaverse/hydrogen/next`, Forward), use the `weaverse-nextjs` skill.
 
 ## Live Documentation
 
@@ -76,7 +78,7 @@ app/
 ├── weaverse/
 │   ├── components.ts  # Component registry
 │   ├── schema.server.ts  # Theme schema (global settings)
-│   └── csp.ts         # Content Security Policy for Weaverse
+│   └── csp.ts         # Theme + Weaverse Studio CSP directives (getCspDirectives)
 ├── entry.client.tsx
 ├── entry.server.tsx
 ├── routes.ts          # Route config (`@react-router/dev/routes`)
@@ -417,9 +419,9 @@ export async function createAppContext(request: Request, env: Env, executionCont
 export type AppContext = Awaited<ReturnType<typeof createAppContext>>;
 ```
 
-`locale` is only needed when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market); without it Weaverse reads `storefront.i18n`. `Env` extends `WeaverseEnv` from `@weaverse/hydrogen/react-router` in `env.d.ts`.
+`locale` is only needed when the market's Shopify `LanguageCode` differs from the locale Weaverse keys translations by (e.g. `ZH_TW` for a Hong Kong market); without it Weaverse reads `storefront.locale`. `Env` extends `WeaverseEnv` from `@weaverse/hydrogen/react-router` in `env.d.ts`.
 
-`server.ts` is a module-format fetch handler: `createAppContext()` → `handleShopifyRoutes()` (cart, predictive search, Customer Account OAuth, Storefront API proxy) → React Router's `createRequestHandler(serverBuild)` with the context copied onto a `RouterContextProvider` → session commit and `requestContext.applyResponseHeaders()` → `handleShopifyRedirects()` on a 404. See [references/01-project-structure.md](references/01-project-structure.md).
+`server.ts` is a module-format fetch handler: `createAppContext()` → `handleShopifyRoutes()` (cart, predictive search, Customer Account OAuth, Storefront API proxy, checkout and `/buy` permalinks, UCP and MCP agent endpoints) → React Router's `createRequestHandler(serverBuild)` with the context copied onto a `RouterContextProvider` → session commit and `requestContext.applyResponseHeaders()` → `handleShopifyRedirects()` on a 404. See [references/01-project-structure.md](references/01-project-structure.md). Shopify's own template runs these phases in root-route middleware; the mapping, Standard Actions (`openCart`), CSP and the production checklist are in the `shopify-hydrogen` skill's `references/05-storefront-contracts.md`.
 
 ---
 

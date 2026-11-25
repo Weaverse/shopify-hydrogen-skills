@@ -26,12 +26,14 @@ skills/
     SKILL.md                       # CLI-first scaffold, demo-store boot, env/GitHub/Builder connection
   shopify-hydrogen/                # Core Hydrogen APIs (live + offline)
     SKILL.md
-    references/                    # 3 reference files (cached API docs)
+    references/                    # 5 reference files (cached API docs, storefront contracts)
     scripts/                       # Shared live-doc helpers, installed with the pack
       search_shopify_docs.mjs      # Live Shopify Hydrogen API docs search
       search_weaverse_docs.mjs     # Live Weaverse docs search
       get_weaverse_page.mjs        # Fetch a specific Weaverse doc page
       check_docs_helpers.mjs       # Boundary checks for the helpers (no network)
+  weaverse-nextjs/                 # Weaverse on Next.js App Router (Forward)
+    SKILL.md                       # @weaverse/hydrogen/next, proxy.ts, caching, CSP
   weaverse-hydrogen/               # Weaverse CMS + Hydrogen fundamentals
     SKILL.md
     references/                    # 15 deep-dive reference files
@@ -116,7 +118,8 @@ All scripts use Node.js built-ins only (no dependencies needed). Require Node.js
 | Skill | Authoritative Source |
 |-------|---------------------|
 | `setup-weaverse-project/` | Authored in this repo · Cross-check CLI behavior with `@weaverse/cli` and current docs |
-| `shopify-hydrogen/` | Live: `shopify.dev` via search script · Offline: `references/` |
+| `shopify-hydrogen/` | Live: `shopify.dev` via search script · Offline: `references/` · Cross-check APIs with the installed `@shopify/hydrogen` and its packaged skills |
+| `weaverse-nextjs/` | Authored in this repo from [Forward](https://github.com/Weaverse/forward) `main` · Cross-check with `@weaverse/hydrogen/next` and Hydrogen's Next.js references |
 | `weaverse-hydrogen/` | This repo — authored directly · Live: `docs.weaverse.io` via scripts |
 | `hydrogen-cookbooks/` | Authored in this repo with Weaverse-specific patterns |
 | `hydrogen-upgrades/` | Authored in this repo · Cross-check with `shopify.dev` via scripts |
@@ -127,6 +130,8 @@ All scripts use Node.js built-ins only (no dependencies needed). Require Node.js
 | `hydrogen-markets-localization/` | Authored in this repo from verified Hydrogen + Weaverse implementation evidence · Cross-check platform APIs with live Shopify/Weaverse docs |
 
 **Rule:** Never write API docs from memory or training data. Use the scripts to fetch authoritative content.
+
+**Hydrogen version.** The skills describe `@shopify/hydrogen` 2026.10.3. Every Hydrogen API they name must exist in the released package (check `node_modules/@shopify/hydrogen/dist/**/*.d.mts`); don't document features that are only on Hydrogen's `main` branch. shopify.dev lags the package (it has no 2026.10.3 CSP or `defineShopifyI18n` pages yet), so the packaged skills (`npx @shopify/hydrogen skills sync`) and the release notes are the fallback. Old `shopify.dev/docs/storefronts/headless/hydrogen/*` links redirect to Legacy Hydrogen docs; link the `/docs/storefronts/hydrogen/*` pages instead, and say so when only a legacy page exists.
 
 ## Skill File Format
 

@@ -56,7 +56,7 @@ The canonical pipeline. Read this first.
 ```
 app/
 ├── root.tsx                              # <ShopifyScripts> (creates window.Shopify.analytics), GTM bootstrap, Consent Mode default
-├── entry.server.tsx                      # CSP header (nonce from app/utils/csp.ts)
+├── entry.server.tsx                      # CSP header (createContentSecurityPolicy from @shopify/hydrogen, nonce: false)
 ├── components/
 │   └── root/
 │       ├── analytics-views.tsx           # PageView / ProductView / CollectionView / SearchView / CartView publishers + useCartAnalytics()
@@ -88,7 +88,7 @@ app/
 
 Hydrogen 2026.10 removed classic analytics: `Analytics.Provider`, `<Analytics.ProductView|CollectionView|SearchView|CartView>`, `useAnalytics()` and `getShopAnalytics` are gone. What replaces them (Pilot `main` is the reference):
 
-- **`<ShopifyScripts>`** from `@shopify/hydrogen/react`, rendered first in the root `<head>` with `nonce`, `shop` (`{ shopId, storefrontId, myshopifyDomain }`), `i18n` (`{ country, language, pathPrefix, currency }`), `analytics={{ channel }}`, `shopifyAnalytics`, `consent={{ mode: "default-banner" }}`, `routes` and `navigate`. It loads Shopify's runtime and creates the bus at `window.Shopify.analytics`. Build `shop` and `i18n` per market in the root loader, never per shopper, so the document stays cacheable.
+- **`<ShopifyScripts>`** from `@shopify/hydrogen/react`, rendered first in the root `<head>` with `shop` (`{ shopId, storefrontId, myshopifyDomain }`), `i18n` (`{ country, language, pathPrefix, currency }`), `analytics={{ channel }}`, `shopifyAnalytics`, `consent={{ mode: "default-banner" }}`, `routes` and `navigate` (plus `nonce` only in nonce-CSP mode). It loads Shopify's runtime and creates the bus at `window.Shopify.analytics`. Build `shop` and `i18n` per market in the root loader, never per shopper, so the document stays cacheable.
 - **Route trackers** publish view events: `window.Shopify.analytics.publish(AnalyticsEvent.PRODUCT_VIEWED, { products })`, and likewise `PAGE_VIEWED`, `COLLECTION_VIEWED`, `SEARCH_VIEWED`, `CART_VIEWED`, once per URL. Pilot keeps them in `app/components/root/analytics-views.tsx`. Nothing publishes automatically: a bus with destinations but no `publish` calls tracks nothing.
 - **Cart events** (`cart_updated`, `product_added_to_cart`, `product_removed_from_cart`) come from `useCartAnalytics()` (`@shopify/hydrogen/react`), rendered once inside `CartProvider`, after `<ShopifyScripts>`. Never diff the cart by hand.
 - **Every consumer is a destination.** The bus has `publish`, `addDestination` and `getConfig`, no ungated `subscribe`. Register GTM and similar consumers with `addDestination({ name, setup({ subscribe }) { ... } })`; delivery and replay wait for Shopify Customer Privacy consent. Add a destination once per page lifetime (re-adding replays the buffer) and don't load scripts or set cookies inside `setup`.
@@ -175,7 +175,7 @@ export async function handleTrack(request: Request, env: TrackingEnv, ctx: Reque
 
 | Event source | Browser GTM works? | Server `/api/track` works? | Use which |
 |---|---|---|---|
-| Storefront `view_item`, `add_to_cart`, etc. | ✅ (with sendBeacon + nonce CSP) | ✅ | Both, dedup via event_id |
+| Storefront `view_item`, `add_to_cart`, etc. | ✅ (with sendBeacon + a CSP that allows the vendors) | ✅ | Both, dedup via event_id |
 | `purchase` from Shopify thank-you page | ⚠ (only via Customer Events Pixel, locked surface) | ✅ via `orders/create` webhook | Webhook is canonical; pixel adds match-quality lift |
 | Cart mutations answered by the `/api/cart` server handlers | ❌ (server handler, no browser) | ✅ | Server only (the browser still gets `useCartAnalytics()` bus events) |
 | Background jobs (abandoned cart, refund) | ❌ | ✅ | Server only |

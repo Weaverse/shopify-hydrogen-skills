@@ -44,7 +44,7 @@ Integrate Weaverse with your Hydrogen storefront to enable visual page building 
   **Solution**: `weaverse.storefront` is the Hydrogen 2026.10 client. Use `weaverse.storefront.graphql(doc, { variables, cache })`.
 
 - **Issue**: Studio can't connect, or design mode shows CSP errors.
-  **Solution**: Check `WEAVERSE_PROJECT_ID`, and that `getWeaverseCsp()` is merged into the CSP in `app/entry.server.tsx` (it allows the Studio host, frame ancestors and `'unsafe-eval'` in design mode).
+  **Solution**: Check `WEAVERSE_PROJECT_ID`, and that `getWeaverseStudioCspDirectives(request)` is merged into the directives passed to `createContentSecurityPolicy` in `app/entry.server.tsx` (it allows the Studio host as a frame ancestor and script source, plus `'unsafe-eval'` in design mode).
 </troubleshooting>
 
 # Recipe Implementation
@@ -81,7 +81,7 @@ my-hydrogen-project
 │   │   ├── index.tsx             # WeaverseContent
 │   │   ├── schema.server.ts      # Theme schema
 │   │   ├── style.tsx             # Global styles from theme settings
-│   │   └── csp.ts                # Weaverse CSP directives
+│   │   └── csp.ts                # Theme + Weaverse Studio CSP directives
 │   ├── entry.server.tsx          # Applies the CSP
 │   └── root.tsx                  # withWeaverse + theme settings
 ├── env.d.ts                      # Env and context typing
@@ -303,7 +303,6 @@ The root loader returns the theme settings under `weaverseTheme`, and the root `
 import { withWeaverse } from "@weaverse/hydrogen/react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import { useNonce } from "~/utils/csp";
 import { GlobalStyle } from "~/weaverse/style";
 
 export async function loader({ context }: LoaderFunctionArgs) {
@@ -318,7 +317,6 @@ export const Layout = withWeaverse(function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const nonce = useNonce();
   return (
     <html lang="en">
       <head>
@@ -330,8 +328,8 @@ export const Layout = withWeaverse(function RootLayout({
       </head>
       <body>
         {children}
-        <ScrollRestoration nonce={nonce} />
-        <Scripts nonce={nonce} />
+        <ScrollRestoration />
+        <Scripts />
       </body>
     </html>
   );
@@ -390,31 +388,29 @@ Page types: `INDEX`, `PRODUCT`, `ALL_PRODUCTS`, `COLLECTION`, `COLLECTION_LIST`,
 
 ### Step 8: Allow Weaverse in the CSP
 
-Hydrogen 2026.10 no longer ships `createContentSecurityPolicy`/`NonceProvider`; Pilot ports them to `app/utils/csp.ts`. `getWeaverseCsp(request, env)` in `app/weaverse/csp.ts` returns the Weaverse directives (Studio hosts, plus `frameAncestors: ["*"]` and `'unsafe-eval'` in design mode).
+`@shopify/hydrogen` 2026.10.3 builds the policy with `createContentSecurityPolicy`. `getCspDirectives(request, checkoutDomain)` in `app/weaverse/csp.ts` returns the theme's third-party directives merged with `getWeaverseStudioCspDirectives(request)` from `@weaverse/hydrogen/react-router`, which adds the Studio origin (and `'unsafe-eval'` in design mode) only inside Studio, for a trusted `weaverseHost`. Pilot's policy has no nonce, so `root.tsx` passes no nonce to `Scripts` and `ScrollRestoration` and Oxygen can cache the document.
 
 #### File: app/entry.server.tsx (excerpt)
 
 ```tsx
-import {
-  createContentSecurityPolicy,
-  generateNonce,
-  NonceProvider,
-} from "~/utils/csp";
-import { getWeaverseCsp } from "~/weaverse/csp";
+import { createContentSecurityPolicy } from "@shopify/hydrogen";
+import { getCspDirectives } from "~/weaverse/csp";
 
-const nonce = generateNonce();
-const header = createContentSecurityPolicy(
-  nonce,
-  getWeaverseCsp(request, context.env),
-  {
-    checkoutDomain:
-      context.env?.PUBLIC_CHECKOUT_DOMAIN || context.env?.PUBLIC_STORE_DOMAIN,
-    storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
+const csp = createContentSecurityPolicy({
+  nonce: false,
+  shop: {
+    checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || undefined,
+    storeDomain: context.env?.PUBLIC_STORE_DOMAIN || undefined,
   },
-);
-// Wrap <ServerRouter> in <NonceProvider value={nonce}> and set the
-// Content-Security-Policy(-Report-Only) header.
+  // Includes "'unsafe-inline'" in scriptSrc: React Router's streamed
+  // hydration scripts carry no nonce.
+  directives: getCspDirectives(request, context.env?.PUBLIC_CHECKOUT_DOMAIN || undefined),
+});
+// Render <ServerRouter context={reactRouterContext} url={request.url} />, then:
+responseHeaders.set("Content-Security-Policy-Report-Only", csp.header);
 ```
+
+The full `app/weaverse/csp.ts` is in the `weaverse-hydrogen` skill, `references/09-deployment.md`.
 
 ### Step 9: Create a section with a loader
 
@@ -606,6 +602,7 @@ npm run typecheck
 
 - [Weaverse Documentation](https://docs.weaverse.io)
 - [Weaverse Hydrogen skills](https://github.com/Weaverse/shopify-hydrogen-skills/tree/main/skills/weaverse-hydrogen)
-- Hydrogen's packaged skills: `node_modules/@shopify/hydrogen/skills/`
-- [Shopify Hydrogen Documentation](https://shopify.dev/docs/storefronts/headless/hydrogen)
+- Hydrogen's packaged skills: `node_modules/@shopify/hydrogen/skills/`, copied into the project by `npx @shopify/hydrogen skills sync`
+- [Shopify Hydrogen Documentation](https://shopify.dev/docs/storefronts/hydrogen)
+- [Shopify's Hydrogen production checklist](https://shopify.dev/docs/storefronts/hydrogen/production-checklist)
 </recipe_implementation>

@@ -56,7 +56,11 @@ cat package.json | grep -E '"react-router"|"@remix-run"|"@shopify/hydrogen"|"@we
 | `@shopify/hydrogen` 2025.5 – 2026.4 (classic: `createHydrogenContext`, React Router 7) | Upgrade to 2026.10 first (recommended), or `@weaverse/hydrogen@5` |
 | `@remix-run/react` | Migrate to React Router 7 and Hydrogen 2026.10 first, or `@weaverse/hydrogen@4` |
 
-`@weaverse/hydrogen` 6 has a peer dependency on `@shopify/hydrogen >=2026.10.0`. It does not run on classic Hydrogen.
+`@weaverse/hydrogen` 6 has a peer dependency on `@shopify/hydrogen >=2026.10.0`. It does not run on classic Hydrogen. The CSP and locale steps below use `@shopify/hydrogen` 2026.10.3 APIs (`createContentSecurityPolicy`, `defineShopifyI18n`); on 2026.10.0-2, upgrade first.
+
+On Hydrogen 2026.10, sync Shopify's packaged skills into the project before you change code (`npx @shopify/hydrogen skills sync`), and read `hydrogen-request-handlers` there to see how the project wires `handleShopifyRoutes`.
+
+**If the project is a Next.js app** (`next` in `package.json`, `proxy.ts` or `middleware.ts`), use the `weaverse-nextjs` skill instead.
 
 **If the project is on classic Hydrogen (2026.4 or earlier):**
 - Recommend upgrading to Hydrogen 2026.10 first: [`upgrade-2026.4.7-to-2026.10.2.md`](../hydrogen-upgrades/references/upgrade-2026.4.7-to-2026.10.2.md) and Shopify's packaged migration skill (`node_modules/@shopify/hydrogen/skills/migrate-to-hydrogen-2026-10/`, available once `@shopify/hydrogen@2026.10` is installed). Then integrate Weaverse 6 with this skill.
@@ -287,37 +291,24 @@ Use the project's existing error component if they have one, otherwise create a 
 
 #### `app/weaverse/csp.ts` — Content Security Policy
 
-Trimmed from Pilot's `app/weaverse/csp.ts`; add the project's own third-party origins.
+Trimmed from Pilot's `app/weaverse/csp.ts`; add the project's own third-party origins. The Weaverse part comes from the SDK (`@weaverse/hydrogen/react-router` 6.3+), which adds the Studio origin only inside Studio and only for a trusted `weaverseHost`.
 
 ```ts
-export function getWeaverseCsp(
-  request: Request,
-  env: { WEAVERSE_HOST?: string },
-) {
-  let url = new URL(request.url);
-  // Studio loads the preview with `?weaverseHost=...`
-  let weaverseHost = url.searchParams.get("weaverseHost") || env.WEAVERSE_HOST;
-  let isDesignMode = url.searchParams.get("weaverseHost");
-  let weaverseHosts = ["*.weaverse.io", "*.shopify.com", "*.myshopify.com"];
-  if (weaverseHost) {
-    weaverseHosts.push(weaverseHost);
+import type { ContentSecurityPolicyDirectives } from "@shopify/hydrogen";
+import { getWeaverseStudioCspDirectives } from "@weaverse/hydrogen/react-router";
+
+// The project's own third-party sources; each array extends Hydrogen's defaults
+const THEME_DIRECTIVES = {
+  scriptSrc: ["'unsafe-inline'"], // only with a nonce-free policy, see entry.server.tsx
+} satisfies ContentSecurityPolicyDirectives;
+
+export function getCspDirectives(request: Request): ContentSecurityPolicyDirectives {
+  const directives: ContentSecurityPolicyDirectives = { ...THEME_DIRECTIVES };
+  const studio = getWeaverseStudioCspDirectives(request);
+  for (const key of Object.keys(studio) as (keyof typeof studio)[]) {
+    directives[key] = [...(directives[key] ?? []), ...(studio[key] ?? [])];
   }
-
-  let updatedCsp: Record<string, string[] | string | boolean> = {
-    defaultSrc: ["data:", ...weaverseHosts],
-    connectSrc: [...weaverseHosts],
-    styleSrc: [...weaverseHosts],
-    // `scriptSrc` replaces `defaultSrc` for scripts, so list every script origin
-    scriptSrc: ["'self'", "https://cdn.shopify.com", ...weaverseHosts],
-  };
-
-  if (isDesignMode) {
-    updatedCsp.frameAncestors = ["*"];
-    // The Studio bridge rebuilds schema `condition` functions from strings
-    (updatedCsp.scriptSrc as string[]).push("'unsafe-eval'");
-  }
-
-  return updatedCsp;
+  return directives;
 }
 ```
 
@@ -355,7 +346,7 @@ export async function createAppContext(
 }
 ```
 
-- Weaverse reads `storefront.i18n` (`language`, `country`, `pathPrefix`) for the content locale. If a market's Shopify `LanguageCode` differs from the locale its translations are keyed by (for example `ZH_TW` for a Hong Kong market), pass the market as `locale: { language, country, pathPrefix }` (`@weaverse/hydrogen` 6.1+) instead of relabeling the storefront client. Pilot passes `locale: resolveRequestLocale(request)`.
+- Weaverse reads `storefront.locale` (`language`, `country`, `pathPrefix`) for the content locale (`@shopify/hydrogen` 2026.10.3; `storefront.i18n` is the deprecated alias). If a market's Shopify `LanguageCode` differs from the locale its translations are keyed by (for example `ZH_TW` for a Hong Kong market), pass the market as `locale: { language, country, pathPrefix }` (`@weaverse/hydrogen` 6.1+) instead of relabeling the storefront client. Pilot passes `locale: resolveRequestLocale(request)`.
 - Optional: `throwPageLoadFailures: true` makes `loadPage()` reject with a `WeaverseLoadError` on a Weaverse outage, so a route can answer 503 instead of 404.
 - `server.ts` needs no Weaverse-specific change as long as it copies the whole context object onto `RouterContextProvider` (Pilot: `Object.assign(new RouterContextProvider(), appContext)`).
 
@@ -390,27 +381,26 @@ The root loader also returns the theme settings: `weaverseTheme: await context.w
 
 #### `app/entry.server.tsx` — Add Weaverse CSP
 
-Hydrogen 2026.10 no longer exports `createContentSecurityPolicy`, `NonceProvider` or `useNonce`; a 2026.10 project has its own port (Pilot: `app/utils/csp.ts`). Merge `getWeaverseCsp(request, context.env)` into whatever that helper takes. Pilot's version:
+`@shopify/hydrogen` 2026.10.3 exports `createContentSecurityPolicy({ shop, nonce, directives })` again (2026.10.0-2 didn't, so some projects have a local `app/utils/csp.ts` port; replace it with Hydrogen's on 2026.10.3). Pass `getCspDirectives(request)` as `directives`. Pilot's version is nonce-free, so the document stays cacheable:
 
 ```tsx
-import {
-  createContentSecurityPolicy,
-  generateNonce,
-  NonceProvider,
-} from "~/utils/csp";
-import { getWeaverseCsp } from "~/weaverse/csp";
+import { createContentSecurityPolicy } from "@shopify/hydrogen";
+import { getCspDirectives } from "~/weaverse/csp";
 
 // Inside handleRequest(request, responseStatusCode, responseHeaders, reactRouterContext, context):
-const nonce = generateNonce();
-const header = createContentSecurityPolicy(
-  nonce,
-  getWeaverseCsp(request, context.env),
-  {
-    checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || context.env?.PUBLIC_STORE_DOMAIN,
-    storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
+const csp = createContentSecurityPolicy({
+  nonce: false,
+  shop: {
+    checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || undefined,
+    storeDomain: context.env?.PUBLIC_STORE_DOMAIN || undefined,
   },
-);
+  directives: getCspDirectives(request),
+});
+// ... render, then report-only until the store is ready to enforce
+responseHeaders.set("Content-Security-Policy-Report-Only", csp.header);
 ```
+
+If the project already uses a nonce policy (`csp.nonce` passed to `ServerRouter`, `Scripts` and `ShopifyScripts`), keep it and only merge the directives; drop `'unsafe-inline'` from `THEME_DIRECTIVES` in that case, since browsers ignore it next to a nonce.
 
 Merge with their existing CSP config — don't replace it.
 

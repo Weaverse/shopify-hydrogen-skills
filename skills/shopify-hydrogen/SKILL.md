@@ -1,6 +1,6 @@
 ---
 name: shopify-hydrogen
-description: "Core Shopify Hydrogen 2026.10 APIs — the server.ts request lifecycle (handleShopifyRoutes, handleShopifyRedirects), request-scoped Storefront client with gql() + graphql(), explicit caching, the /api/cart handlers and cart store, and the classic helpers you now port locally."
+description: "Core Shopify Hydrogen 2026.10 APIs — the server.ts request lifecycle (handleShopifyRoutes, handleShopifyRedirects), the routes Hydrogen owns (UCP, MCP, /buy, AJAX cart), defineShopifyI18n, request-scoped Storefront client with gql() + graphql(), explicit caching, the /api/cart handlers and cart store, ShopifyScripts and Standard Actions (openCart), createContentSecurityPolicy, the production checklist, and the classic helpers you now port locally."
 ---
 
 # Shopify Hydrogen
@@ -11,7 +11,13 @@ Imports come from `@shopify/hydrogen` (server handlers, `gql`, `Cache`, types), 
 
 > This skill describes Hydrogen 2026.10 as [Pilot](https://github.com/Weaverse/pilot) `main` implements it. Classic Hydrogen (2026.4 and earlier: `createHydrogenContext`, `storefront.query()`, `CartForm`, `Analytics.Provider`) is covered by the `hydrogen-upgrades` skill, including the `2026.4.7 → 2026.10.2` migration guide.
 
-`@shopify/hydrogen` 2026.10 also ships its own agent skills in `node_modules/@shopify/hydrogen/skills/` (for example `migrate-to-hydrogen-2026-10/`). Read them in the project when they exist.
+`@shopify/hydrogen` 2026.10 also ships its own version-matched agent skills (`hydrogen-request-handlers`, `hydrogen-cart-drawer`, `hydrogen-markets`, `migrate-to-hydrogen-2026-10`, ...). Sync them into the project and use them alongside this skill:
+
+```bash
+npx @shopify/hydrogen skills sync   # copies them to .agents/skills/ and .claude/skills/
+```
+
+Re-run the sync after every `@shopify/hydrogen` upgrade, and don't edit the copies. Prefix `dev` with `hydrogen skills check --mode=warn` so a stale copy prints the resync command. Every API in this skill is checked against **2026.10.3**; if the installed version differs, trust `node_modules/@shopify/hydrogen` and its synced skills.
 
 ## Live Documentation
 
@@ -45,16 +51,22 @@ For offline/cached reference, see the [references/](#references) folder below.
 `createHydrogenContext()` and Hydrogen's `createRequestHandler` are gone. A module-format fetch handler composes:
 
 1. `createAppContext()` — your own function building the session, the request-scoped storefront client, the customer account wrapper and any CMS client (Weaverse).
-2. `handleShopifyRoutes({ request, requestContext, sessionManager, storefrontClient, routeTemplates, handlers })` — answers the paths Hydrogen owns (`/api/cart`, `/api/predictive-search`, the Storefront API proxy, checkout and cart permalinks, `/account/login|authorize|refresh|logout`). Returns a `Promise<Response>` or `null`; check it without `await`.
+2. `handleShopifyRoutes({ request, requestContext, sessionManager, storefrontClient, routeTemplates, handlers })` — answers the paths Hydrogen owns (`/api/cart`, `/api/predictive-search`, the Storefront API proxy, `/checkout`, cart and `/buy` permalinks, the AJAX cart, `/.well-known/ucp`, `/api/mcp`, `/api/ucp/mcp`, `?variant=` links, `/account/login|authorize|refresh|logout`). Returns a `Promise<Response>` or `null`; check it without `await`. Call it for every request; never whitelist its paths.
 3. React Router's `createRequestHandler(serverBuild, mode)` with the app context copied onto a `RouterContextProvider`.
 4. Session commit, then `requestContext.applyResponseHeaders(response.headers)`.
 5. On a 404, `handleShopifyRedirects({ request, storefrontClient, routeTemplates })` for Shopify URL redirects.
 
-`routeTemplates` comes from `createShopifyRouteTemplates()`. Omitting it, or `applyResponseHeaders`, fails silently.
+`routeTemplates` comes from `defineShopifyRouteTemplates()` (`createShopifyRouteTemplates` is its deprecated alias). Omitting it, or `applyResponseHeaders`, fails silently.
+
+Shopify's React Router template runs the same phases in a root-route `middleware` export instead of `server.ts`. Pilot keeps `server.ts`; see [05-storefront-contracts.md](references/05-storefront-contracts.md#serverts-vs-shopifys-root-middleware-template) for the mapping before you follow a Hydrogen doc or skill that shows the middleware shape.
 
 ### Storefront client
 
 `createStorefrontClient({ type: "private" | "public", requestContext: createShopifyRequestContext({ request, i18n, buyerIp }), config })`. Use the private token when Oxygen injects `PRIVATE_STOREFRONT_API_TOKEN` (with the buyer IP), the public one otherwise.
+
+### Locale
+
+`i18n` is a module-scope `defineShopifyI18n({ defaultLocale, routing: { type: "pathname", locales } })` definition. The request's market is `storefront.locale` (`{ language, country, pathPrefix, ... }`). `storefront.i18n`, a fixed `{ language, country, pathPrefix }` passed as `i18n`, and `I18nConfig` are deprecated in 2026.10.3. Pass `locale` to `createShopifyRequestContext` only when the URL can't tell the market (Pilot does, for unprefixed Hydrogen endpoints).
 
 ### Queries
 
@@ -88,7 +100,15 @@ There is **no default cache**. Pass `cache` on every query: `Cache({...})`, `Cac
 
 ### Analytics
 
-`ShopifyScripts` from `@shopify/hydrogen/react` (first in `<head>`) replaces `Analytics.Provider`. Publish route events to `window.Shopify.analytics`; `useCartAnalytics()` publishes cart events from the cart store.
+`ShopifyScripts` from `@shopify/hydrogen/react` (first in `<head>`, with `shop`, `i18n`, `analytics`, `consent`, `routes={routeTemplates}` and `navigate`) replaces `Analytics.Provider`. It also loads Standard Actions and WebMCP. Publish `PAGE_VIEWED` and route events to `window.Shopify.analytics` yourself; `useCartAnalytics()` publishes cart events from the cart store.
+
+### Standard Actions and agents
+
+`window.Shopify.actions` exposes `getCart`, `updateCart` and `openCart`, the contract shared with theme apps and WebMCP agents. Hydrogen's cart store configures `updateCart`; the app must configure `openCart` to open its drawer (`openCart.configure({ handler })`). UCP discovery (`/.well-known/ucp`), MCP (`/api/mcp`, `/api/ucp/mcp`) and `/buy` links come from `handleShopifyRoutes()`. Details: [05-storefront-contracts.md](references/05-storefront-contracts.md).
+
+### Content Security Policy
+
+`createContentSecurityPolicy({ shop, nonce, directives })`, `getShopifyCspDirectives()` and `getShopifyScriptHashes()` are back in 2026.10.3 as framework-neutral functions (no `NonceProvider`/`useNonce`). Pilot calls `createContentSecurityPolicy({ nonce: false, ... })` with `'unsafe-inline'` scripts in `entry.server.tsx`, so the document stays full-page cacheable, and sends the header report-only.
 
 ### Removed helpers (port them locally)
 
@@ -97,11 +117,11 @@ There is **no default cache**. Pass `cache` on every query: `Cache({...})`, `Cac
 | `Image`, `Money`, `ExternalVideo`, `ModelViewer` | Local components (Pilot: `app/components/`) |
 | `Pagination`, `getPaginationVariables` | Local ports (Pilot: `app/components/pagination.tsx`, `app/utils/pagination.ts`) |
 | `getSeoMeta`, `SeoConfig`, sitemap helpers | Local ports (Pilot: `app/utils/seo-meta.ts`, `app/.server/sitemap.ts`) |
-| `createContentSecurityPolicy`, `NonceProvider`, `useNonce` | Local port (Pilot: `app/utils/csp.ts`) |
+| `NonceProvider`, `useNonce`, `Script` | None needed with `nonce: false`; in nonce mode, an app-owned React context for `csp.nonce` |
 | `ShopPayButton` | `@shopify/hydrogen/react` |
 | `getSelectedProductOptions` | `@weaverse/hydrogen/react-router` in Weaverse themes |
 
-`flattenConnection` is still exported by `@shopify/hydrogen`.
+`flattenConnection` is still exported by `@shopify/hydrogen`. `createContentSecurityPolicy` was missing in 2026.10.0-2 and is back in 2026.10.3, with a new signature; delete any local `app/utils/csp.ts` port when you upgrade.
 
 ### Tooling
 
@@ -119,3 +139,4 @@ For offline/cached reference when the search script is unavailable:
 | [references/02-caching.md](references/02-caching.md) | `Cache` strategies, `CACHE_*` constants, `Cache-Control` headers, what to cache |
 | [references/03-cart.md](references/03-cart.md) | `/api/cart` handlers, cart fragment, `createCartComponents`, cart forms, app-owned cart handlers |
 | [references/04-ssr-performance.md](references/04-ssr-performance.md) | SSR bundle diet (worker inlines dynamic imports — `resolveId` stub pattern), bundle audit, TTFB measurement methodology |
+| [references/05-storefront-contracts.md](references/05-storefront-contracts.md) | Syncing Hydrogen's packaged skills, the routes Hydrogen owns (UCP, MCP, `/buy`, AJAX cart), `ShopifyScripts` and Standard Actions (`openCart`), `defineShopifyI18n`, `createContentSecurityPolicy` modes, `server.ts` vs root middleware, production checklist |

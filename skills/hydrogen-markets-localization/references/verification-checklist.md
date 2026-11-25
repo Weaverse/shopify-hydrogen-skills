@@ -46,7 +46,8 @@ Prefer behavior-level tests against public helpers or real route boundaries.
 ### Context and rendering
 
 - [ ] The real request context sends Shopify its verified provider language and country.
-- [ ] The real Weaverse client sends the public language-country locale used for content and Translation Manager lookup (on `@weaverse/hydrogen` 6.1+, the `WeaverseClient` `locale` option; otherwise it reads `storefront.i18n`).
+- [ ] Every market in the `defineShopifyI18n` definition resolves to its existing prefix (`pathSegment` pinned where Hydrogen's derived `/{language}-{country}` would differ).
+- [ ] The real Weaverse client sends the public language-country locale used for content and Translation Manager lookup (on `@weaverse/hydrogen` 6.1+, the `WeaverseClient` `locale` option; otherwise it reads `storefront.locale`).
 - [ ] Unprefixed Hydrogen handler requests (`/api/cart`, `/api/predictive-search`, `/account/login|logout|refresh`) resolve the market from the same-origin `Referer` (and `return_to` for login), not the default market.
 - [ ] Provider-language overrides do not change the public path, hreflang, bundle, or Weaverse locale.
 - [ ] SSR and hydration render the same `<html lang>` and `dir` for LTR and RTL markets.
@@ -69,7 +70,7 @@ Prefer behavior-level tests against public helpers or real route boundaries.
 - [ ] Cart permalinks (`/cart/<variant>:<qty>`, with and without a market prefix) create the cart in the expected market.
 - [ ] Safe app-relative redirect targets beginning with exactly one `/` survive; schemes, protocol-relative forms, backslashes, control characters, and parse failures fall back to the localized cart while required cart/session cookies still commit.
 - [ ] Login and unauthorized-account redirects preserve the market and return target.
-- [ ] Logout passes the localized home as `postLogoutRedirectUri` (on 2026.10, via `/account/logout?return_to=<localized home>`).
+- [ ] Signing out from any market returns to that market's home (Pilot: the fixed `postLogoutRedirectUri` `/account/signed-out`, which redirects to the market remembered in the session).
 - [ ] After a client-side market switch, `window.Shopify` (country, currency, locale, `routes.root`) matches the new market, and `<ShopifyScripts>` `i18n` matches the server-rendered market.
 - [ ] Checkout uses the cart after buyer-identity synchronization and returns localized on failure.
 

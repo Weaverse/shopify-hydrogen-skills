@@ -176,7 +176,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
       input: {
         lines: linesMap,
         discountCodes: discount ? [discount] : [],
-        buyerIdentity: { countryCode: storefront.i18n.country },
+        buyerIdentity: { countryCode: storefront.locale.country },
         ...(attributionAttrs.length > 0 ? { attributes: attributionAttrs } : {}),
       },
     },

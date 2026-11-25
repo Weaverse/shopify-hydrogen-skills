@@ -22,11 +22,11 @@ my-theme/
 │   ├── sections/            # Weaverse section components
 │   ├── styles/              # Global CSS, Tailwind base
 │   ├── types/               # TypeScript type definitions
-│   ├── utils/               # Helpers (cache.ts, storefront.ts, csp.ts, ...)
+│   ├── utils/               # Helpers (cache.ts, storefront.ts, locale.ts, route-templates.ts, ...)
 │   ├── weaverse/
 │   │   ├── components.ts    # Component registry
 │   │   ├── schema.server.ts # Theme schema (global settings)
-│   │   ├── csp.ts           # CSP directives for Weaverse
+│   │   ├── csp.ts           # Theme + Weaverse Studio CSP directives
 │   │   ├── index.tsx        # <WeaverseContent /> (WeaverseHydrogenRoot)
 │   │   └── style.tsx        # Global CSS variables from theme settings
 │   ├── entry.client.tsx     # Client entry point
@@ -85,19 +85,23 @@ Core Weaverse configuration:
   };
   ```
 
-- **`csp.ts`** — Content Security Policy directives for Weaverse:
+- **`csp.ts`** — the theme's CSP directives plus Weaverse Studio's, passed to Hydrogen's `createContentSecurityPolicy()`:
   ```tsx
-  // Pilot's signature: (request, env). Studio's host is read from `?weaverseHost=`.
-  export function getWeaverseCsp(request: Request, env: { WEAVERSE_HOST?: string }) {
-    const isDesignMode = new URL(request.url).searchParams.get('weaverseHost');
-    const directives: Record<string, string[] | string | boolean> = {
-      defaultSrc: ['data:', '*.weaverse.io', '*.shopify.com', '*.myshopify.com'],
-      // ... connectSrc, styleSrc, fontSrc, scriptSrc
-    };
-    if (isDesignMode) directives.frameAncestors = ['*'];
+  import type { ContentSecurityPolicyDirectives } from '@shopify/hydrogen';
+  import { getWeaverseStudioCspDirectives } from '@weaverse/hydrogen/react-router';
+
+  export function getCspDirectives(request: Request, checkoutDomain?: string) {
+    const directives: ContentSecurityPolicyDirectives = { ...THEME_DIRECTIVES }; // third-party sources
+    // ... checkout domain as a media source
+    // Studio origins only for a trusted `weaverseHost` (+ 'unsafe-eval' in design mode)
+    const studio = getWeaverseStudioCspDirectives(request);
+    for (const key of Object.keys(studio) as (keyof typeof studio)[]) {
+      directives[key] = [...(directives[key] ?? []), ...(studio[key] ?? [])];
+    }
     return directives;
   }
   ```
+  The full file is in [09-deployment.md](09-deployment.md#content-security-policy-csp).
 
 ### `app/routes/` and `app/routes.ts`
 
@@ -292,14 +296,15 @@ Pilot's real root also renders `ShopifyScripts` (from `@shopify/hydrogen/react`)
 
 ### `entry.server.tsx`
 
-Uses `ServerRouter` from React Router. Hydrogen 2026.10 removed `createContentSecurityPolicy`, `NonceProvider` and `useNonce`; Pilot ports them to `app/utils/csp.ts`:
+Uses `ServerRouter` from React Router and Hydrogen 2026.10.3's `createContentSecurityPolicy` (no local `app/utils/csp.ts`, no `NonceProvider`). Pilot's policy has no nonce, so Oxygen's full-page cache can store the document:
 
 ```tsx
+import { createContentSecurityPolicy } from '@shopify/hydrogen';
+import { isbot } from 'isbot';
 import { renderToReadableStream } from 'react-dom/server';
 import type { EntryContext, RouterContextProvider } from 'react-router';
 import { ServerRouter } from 'react-router';
-import { createContentSecurityPolicy, generateNonce, NonceProvider } from '~/utils/csp';
-import { getWeaverseCsp } from '~/weaverse/csp';
+import { getCspDirectives } from '~/weaverse/csp';
 
 export default async function handleRequest(
   request: Request,
@@ -308,21 +313,31 @@ export default async function handleRequest(
   reactRouterContext: EntryContext,
   context: RouterContextProvider,
 ) {
-  const nonce = generateNonce();
-  const header = createContentSecurityPolicy(nonce, getWeaverseCsp(request, context.env), {
-    checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || context.env?.PUBLIC_STORE_DOMAIN,
-    storeDomain: context.env?.PUBLIC_STORE_DOMAIN,
+  const csp = createContentSecurityPolicy({
+    nonce: false,
+    shop: {
+      checkoutDomain: context.env?.PUBLIC_CHECKOUT_DOMAIN || undefined,
+      storeDomain: context.env?.PUBLIC_STORE_DOMAIN || undefined,
+    },
+    directives: getCspDirectives(request, context.env?.PUBLIC_CHECKOUT_DOMAIN || undefined),
   });
 
   const body = await renderToReadableStream(
-    <NonceProvider value={nonce}>
-      <ServerRouter context={reactRouterContext} url={request.url} nonce={nonce} />
-    </NonceProvider>,
-    { nonce, signal: request.signal },
+    <ServerRouter context={reactRouterContext} url={request.url} />,
+    {
+      signal: request.signal,
+      onError(error) {
+        console.error(error);
+        responseStatusCode = 500;
+      },
+    },
   );
+  if (isbot(request.headers.get('user-agent'))) await body.allReady;
 
   responseHeaders.set('Content-Type', 'text/html');
-  responseHeaders.set('Content-Security-Policy-Report-Only', header);
+  // Report-only; switch to csp.applyResponseHeaders(responseHeaders) to enforce
+  responseHeaders.set('Content-Security-Policy-Report-Only', csp.header);
+  // Pilot also sets Oxygen-Cache-Control + Vary here for anonymous documents
   return new Response(body, { headers: responseHeaders, status: responseStatusCode });
 }
 ```

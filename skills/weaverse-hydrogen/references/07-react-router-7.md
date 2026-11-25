@@ -203,7 +203,7 @@ export async function loader({ context, params }: LoaderFunctionArgs) {
 
 ## Entry Server
 
-Uses `ServerRouter`. Hydrogen 2026.10 removed its CSP helpers, so `NonceProvider` and `createContentSecurityPolicy` come from the theme (`app/utils/csp.ts` in Pilot). Full file: [01-project-structure.md](01-project-structure.md#entryservertsx).
+Uses `ServerRouter` and Hydrogen 2026.10.3's `createContentSecurityPolicy({ nonce: false, shop, directives })` from `@shopify/hydrogen` (no `NonceProvider`). Full file: [01-project-structure.md](01-project-structure.md#entryservertsx).
 
 ## Loader Patterns
 
